@@ -44,16 +44,25 @@ ESP32 her kayıt aralığında (varsayılan 10 s) ölçümleri ve olayları HTTP
 
 Yayına alma: Render → **New → Blueprint** → bu repo. `API_KEY` sorulduğunda ESP32'deki `SECRET_API_KEY` ile aynı değeri gir. Servis adresini (`https://<ad>.onrender.com`) `secrets.h` içindeki `SECRET_API_URL`'ye yazıp ESP32'yi yeniden yükle.
 
+### Bulut paneli
+
+https://stm32iot-api.onrender.com adresi tarayıcıda bir panel açar: canlı değerler, aktif alarmlar, seçilebilir zaman aralığında grafik (1 saat – tümü), CSV indirme ve olay geçmişi. Girişte erişim anahtarı sorulur:
+
+- `VIEW_KEY` (önerilen): Render → servis → **Environment** bölümüne eklenen, **sadece okuma** yetkili panel şifresi. Arkadaşlarla bu paylaşılır; bu şifreyle veri yazılamaz.
+- `VIEW_KEY` tanımlı değilse `API_KEY` ile de giriş yapılabilir (yazma yetkili, paylaşmayın).
+
 | Uç | Açıklama |
 |---|---|
+| `GET /` | Bulut paneli |
 | `GET /health` | Sağlık kontrolü |
+| `GET /api/v1/series` | `?device=&from=&to=&points=` grafik için gruplanmış veri |
 | `POST /api/v1/telemetry` | `{"device","records":[{"t","temp","vx","vy","vz","v","flags"}]}` |
 | `POST /api/v1/events` | `{"device","events":[{"t","code","state","value","limit","desc"}]}` |
 | `GET /api/v1/telemetry` | `?device=&from=&to=&limit=` |
 | `GET /api/v1/events` | `?device=&from=&to=&limit=` |
 | `GET /api/v1/latest` | Cihaz başına son kayıt ve sayılar |
 
-`/health` dışındaki tüm uçlar `X-API-Key` başlığı ister.
+`/` ve `/health` dışındaki tüm uçlar `X-API-Key` başlığı ister. Yazma uçları sadece `API_KEY`, okuma uçları `API_KEY` ya da `VIEW_KEY` kabul eder.
 
 **Render ücretsiz plan notları:** Web servisi ayda 750 saate kadar ücretsizdir (7/24 tek servis için yeterli). 15 dakika istek gelmezse uyur; ESP32 sürekli gönderdiği için uyumaz. **Ücretsiz Postgres 30 gün sonra silinir.** Kalıcı saklama için veritabanını ücretli plana yükselt ya da `DATABASE_URL`'yi süresiz ücretsiz bir Postgres'e yönlendir.
 

@@ -7,11 +7,15 @@
  *
  * Ortam degiskenleri:
  *   API_KEY       ESP32'nin X-API-Key basliginda gonderecegi anahtar (zorunlu)
+ *   VIEW_KEY      Istege bagli, sadece okuma anahtari (panel sifresi). Tanimliysa
+ *                 okuma uclari API_KEY'e ek olarak bunu da kabul eder; yazma kabul etmez.
  *   DATABASE_URL  Postgres baglanti adresi. Yoksa yerel test icin SQLite dosyasi kullanilir.
  *   PORT          Dinlenecek port (Render kendisi verir), varsayilan 8080
  *
  * Uclar:
+ *   GET  /                            goruntuleme paneli (public/index.html)
  *   GET  /health                      saglik kontrolu (anahtarsiz)
+ *   GET  /api/v1/series               ?device=&from=&to=&points=  grafik icin gruplanmis veri
  *   POST /api/v1/telemetry            {"device","records":[{"t","temp","vx","vy","vz","v","flags"}]}
  *   POST /api/v1/events               {"device","events":[{"t","code","state","value","limit","desc"}]}
  *   GET  /api/v1/telemetry            ?device=&from=&to=&limit=   (epoch saniye)
@@ -21,9 +25,11 @@
 'use strict';
 
 const crypto = require('crypto');
+const path = require('path');
 const express = require('express');
 
 const API_KEY = process.env.API_KEY || '';
+const VIEW_KEY = process.env.VIEW_KEY || '';
 const PORT = Number(process.env.PORT) || 8080;
 const MAX_BATCH = 500;
 
@@ -82,7 +88,8 @@ async function openStore() {
   return {
     kind: 'sqlite',
     query: async (sql, params = []) => {
-      const st = db.prepare(sql.replace(/\$\d+/g, '?').replace(/\s+RETURNING\s+\w+\s*$/i, ''));
+      // $1 -> ?1 (numarali parametre; ayni parametre birden cok kez kullanilabilir)
+      const st = db.prepare(sql.replace(/\$(\d+)/g, '?$1').replace(/\s+RETURNING\s+\w+\s*$/i, ''));
       if (/^\s*select/i.test(sql)) return st.all(...params);
       // Postgres'teki RETURNING ile ayni sonuc: eklenen satir sayisi kadar eleman
       return new Array(Number(st.run(...params).changes)).fill({});
@@ -92,14 +99,24 @@ async function openStore() {
 
 /* ------------------------------------------------------------------ yardimcilar */
 
-function keyOk(req) {
+function keyMatches(req, key) {
+  if (!key) return false;
   const got = Buffer.from(String(req.get('x-api-key') || ''));
-  const want = Buffer.from(API_KEY);
+  const want = Buffer.from(key);
   return got.length === want.length && crypto.timingSafeEqual(got, want);
 }
 
+// Yazma: sadece API_KEY
 function requireKey(req, res, next) {
-  if (!keyOk(req)) return res.status(401).json({ ok: false, error: 'gecersiz API anahtari' });
+  if (!keyMatches(req, API_KEY)) return res.status(401).json({ ok: false, error: 'gecersiz API anahtari' });
+  next();
+}
+
+// Okuma: API_KEY ya da VIEW_KEY
+function requireRead(req, res, next) {
+  if (!keyMatches(req, API_KEY) && !keyMatches(req, VIEW_KEY)) {
+    return res.status(401).json({ ok: false, error: 'gecersiz anahtar' });
+  }
   next();
 }
 
@@ -121,6 +138,7 @@ async function main() {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '1mb' }));
+  app.use(express.static(path.join(__dirname, 'public')));
 
   app.get('/health', async (req, res) => {
     try {
@@ -179,7 +197,7 @@ async function main() {
     res.json({ ok: true, received: events.length, skipped });
   });
 
-  app.get('/api/v1/telemetry', requireKey, async (req, res) => {
+  app.get('/api/v1/telemetry', requireRead, async (req, res) => {
     const { from, to, limit } = rangeArgs(req.query);
     const device = req.query.device;
     const rows = validDevice(device)
@@ -192,7 +210,7 @@ async function main() {
     res.json(rows.map((r) => ({ ...r, ts: Number(r.ts) })));
   });
 
-  app.get('/api/v1/events', requireKey, async (req, res) => {
+  app.get('/api/v1/events', requireRead, async (req, res) => {
     const { from, to, limit } = rangeArgs(req.query);
     const device = req.query.device;
     const sel = 'SELECT device, ts, code, state, value, lim AS "limit", descr AS "desc" FROM events';
@@ -203,7 +221,34 @@ async function main() {
     res.json(rows.map((r) => ({ ...r, ts: Number(r.ts) })));
   });
 
-  app.get('/api/v1/latest', requireKey, async (req, res) => {
+  // Grafik verisi: aralik en fazla `points` gruba bolunur. Sicaklik ve eksenler
+  // ortalama, toplam titresim en yuksek, alarm bitleri birlesik (OR).
+  app.get('/api/v1/series', requireRead, async (req, res) => {
+    const device = req.query.device;
+    if (!validDevice(device)) return res.status(400).json({ ok: false, error: 'device zorunlu' });
+    const now = Math.floor(Date.now() / 1000);
+    const to = Number.isFinite(Number(req.query.to)) && req.query.to !== undefined ? Number(req.query.to) : now;
+    let from = Number.isFinite(Number(req.query.from)) ? Number(req.query.from) : to - 3600;
+    if (from <= 0) {
+      const first = await store.query('SELECT MIN(ts) AS t FROM telemetry WHERE device = $1', [device]);
+      from = Number(first[0] && first[0].t) || to - 3600;
+    }
+    const points = Math.min(Math.max(parseInt(req.query.points, 10) || 600, 10), 2000);
+    const bucket = Math.max(1, Math.ceil((to - from) / points));
+    const flagsAgg = store.kind === 'postgres' ? 'BIT_OR(flags)' : 'MAX(flags)';
+    const rows = await store.query(
+      `SELECT ts - (ts % $1) AS t, AVG(temp) AS temp, AVG(vx) AS vx, AVG(vy) AS vy, AVG(vz) AS vz,
+              MAX(v) AS v, ${flagsAgg} AS flags, COUNT(*) AS n
+       FROM telemetry WHERE device = $2 AND ts >= $3 AND ts <= $4
+       GROUP BY 1 ORDER BY 1`, [bucket, device, from, to]);
+    const num = (x) => (x === null || x === undefined ? null : Number(x));
+    res.json({
+      from, to, bucket,
+      rows: rows.map((r) => [Number(r.t), num(r.temp), num(r.vx), num(r.vy), num(r.vz), num(r.v), Number(r.flags) || 0]),
+    });
+  });
+
+  app.get('/api/v1/latest', requireRead, async (req, res) => {
     const devices = await store.query(
       `SELECT device, COUNT(*) AS records, MIN(ts) AS first_ts, MAX(ts) AS last_ts
        FROM telemetry GROUP BY device ORDER BY device`);

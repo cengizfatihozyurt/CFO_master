@@ -12,6 +12,8 @@ services:
     envVars:
       - key: API_KEY
         sync: false          # Render kurulumda soracak; ESP32'deki API_KEY ile ayni olmali
+      - key: VIEW_KEY
+        sync: false          # Istege bagli: panel icin sadece okuma sifresi (bos birakilabilir)
       - key: DATABASE_URL
         fromDatabase:
           name: stm32iot-db

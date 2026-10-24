@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STM32 IoT Bulut Paneli</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root { --bg:#f4f6f8; --card:#fff; --fg:#1d2733; --muted:#5b6776; --line:#e3e7ec; --bad:#c0392b; --ok:#1e8449; --acc:#2471a3; }
+  * { box-sizing:border-box; }
+  body { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--fg); margin:0; padding:16px; }
+  main { max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:14px; }
+  header { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; }
+  h1 { font-size:1.35rem; margin:0; }
+  h2 { font-size:1.05rem; margin:0; }
+  .muted { color:var(--muted); font-size:.85rem; }
+  .err { color:var(--bad); }
+  .okc { color:var(--ok); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .card { background:var(--card); border-radius:10px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .card.alarm { box-shadow:0 0 0 2px var(--bad); }
+  .card.alarm .value { color:var(--bad); }
+  .label { font-size:.85rem; color:var(--muted); }
+  .value { font-size:1.8rem; font-weight:600; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .unit { font-size:1rem; font-weight:400; color:var(--muted); }
+  .row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+  .btns { display:flex; flex-wrap:wrap; gap:6px; }
+  button, select, input { font:inherit; font-size:.85rem; }
+  button { padding:6px 12px; border-radius:6px; border:1px solid var(--line); background:#fff; color:var(--fg); cursor:pointer; }
+  button.on, button.primary { background:var(--acc); border-color:var(--acc); color:#fff; }
+  select, input { padding:6px 8px; border:1px solid var(--line); border-radius:6px; }
+  .chartWrap { position:relative; height:340px; }
+  .tableWrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  td:last-child { white-space:normal; min-width:180px; }
+  tr.BASLADI td:nth-child(3) { color:var(--bad); font-weight:600; }
+  tr.BITTI td:nth-child(3) { color:var(--ok); font-weight:600; }
+  #login { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; padding:16px; }
+  #login .card { width:100%; max-width:380px; display:flex; flex-direction:column; gap:10px; }
+  #login input { font-size:1rem; padding:8px 10px; }
+  #login button { font-size:1rem; padding:8px; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <form class="card" id="loginForm">
+    <h1>STM32 IoT Bulut Paneli</h1>
+    <div class="muted">Verileri görmek için erişim anahtarını girin. Tarayıcı bir sonraki girişte hatırlar.</div>
+    <input type="password" id="keyInput" placeholder="Erişim anahtarı" autocomplete="current-password" required>
+    <button type="submit" class="primary">Giriş</button>
+    <div id="loginMsg" class="err"></div>
+  </form>
+</div>
+
+<main id="app" class="hidden">
+  <header>
+    <div>
+      <h1>STM32 IoT Bulut Paneli</h1>
+      <div id="status" class="muted">Yükleniyor...</div>
+    </div>
+    <div class="btns">
+      <select id="device"></select>
+      <button id="logout">Çıkış</button>
+    </div>
+  </header>
+
+  <section class="grid">
+    <div class="card" id="cardT"><div class="label">Sıcaklık</div><div class="value"><span id="t">-</span> <span class="unit">&deg;C</span></div></div>
+    <div class="card" id="cardV"><div class="label">Titreşim RMS (toplam)</div><div class="value"><span id="v">-</span> <span class="unit">g</span></div></div>
+    <div class="card"><div class="label">Titreşim X</div><div class="value"><span id="vx">-</span> <span class="unit">g</span></div></div>
+    <div class="card"><div class="label">Titreşim Y</div><div class="value"><span id="vy">-</span> <span class="unit">g</span></div></div>
+    <div class="card"><div class="label">Titreşim Z</div><div class="value"><span id="vz">-</span> <span class="unit">g</span></div></div>
+  </section>
+
+  <section class="card" id="alarmCard">
+    <h2>Aktif Alarmlar</h2>
+    <div id="alarms" style="margin-top:8px">-</div>
+  </section>
+
+  <section class="card">
+    <div class="row">
+      <h2>Grafik</h2>
+      <div class="btns" id="ranges">
+        <button data-h="1" class="on">1 saat</button>
+        <button data-h="6">6 saat</button>
+        <button data-h="24">24 saat</button>
+        <button data-h="168">7 gün</button>
+        <button data-h="720">30 gün</button>
+        <button data-h="0">Tümü</button>
+        <button id="csv">CSV indir</button>
+      </div>
+    </div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+    <div id="chartMsg" class="muted" style="margin-top:6px"></div>
+  </section>
+
+  <section class="card">
+    <div class="row"><h2>Alarm / Olay Geçmişi</h2><span class="muted" id="evCount"></span></div>
+    <div class="tableWrap">
+      <table>
+        <thead><tr><th>Zaman</th><th>Kod</th><th>Durum</th><th>Değer</th><th>Limit</th><th>Açıklama</th></tr></thead>
+        <tbody id="events"><tr><td colspan="6">Yükleniyor...</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="muted">Kayıtlar ESP32 tarafından 10 saniyede bir gönderilir. İnternet kesilirse cihaz verileri biriktirir ve bağlantı gelince gönderir.</div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const KEY_STORE = 'stm32iot_key';
+const ALARMS = [
+  {flag: 1, code: 'E01', desc: 'Sıcaklık set değerinin üzerinde'},
+  {flag: 2, code: 'E02', desc: 'Titreşim set değerinin üzerinde'},
+  {flag: 4, code: 'E03', desc: 'Sıcaklık sensörü hatası (DS18B20)'},
+  {flag: 8, code: 'E04', desc: 'STM32 veri iletişimi kesildi'},
+];
+const STATE = {BASLADI: 'Başladı', BITTI: 'Bitti', BILGI: 'Bilgi'};
+
+let key = '';
+let device = '';
+let rangeH = 1;
+let chart = null;
+let flagsArr = [];
+let lastSeries = null;
+
+const fmt = (t) => t ? new Date(t * 1000).toLocaleString('tr-TR') : '-';
+const num = (v, d) => (v === null || v === undefined || isNaN(v)) ? '-' : Number(v).toFixed(d);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+
+function ago(sec) {
+  if (sec < 60) return Math.round(sec) + ' sn';
+  if (sec < 3600) return Math.round(sec / 60) + ' dk';
+  if (sec < 86400) return (sec / 3600).toFixed(1) + ' saat';
+  return (sec / 86400).toFixed(1) + ' gün';
+}
+
+async function api(path) {
+  const r = await fetch(path, {headers: {'X-API-Key': key}});
+  if (r.status === 401) { logout('Anahtar geçersiz.'); throw new Error('401'); }
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+/* ---------------------------------------------------------------- giris */
+
+function logout(msg) {
+  try { localStorage.removeItem(KEY_STORE); } catch (e) {}
+  key = '';
+  $('app').classList.add('hidden');
+  $('login').classList.remove('hidden');
+  $('loginMsg').textContent = msg || '';
+}
+
+async function start(k) {
+  key = k;
+  const list = await api('/api/v1/latest');
+  try { localStorage.setItem(KEY_STORE, k); } catch (e) {}
+  $('login').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  $('device').innerHTML = list.map((d) => `<option>${esc(d.device)}</option>`).join('') || '<option value="">(veri yok)</option>';
+  device = list.length ? list[0].device : '';
+  $('device').classList.toggle('hidden', list.length < 2);
+  buildChart();
+  refreshLatest(list);
+  loadSeries();
+  loadEvents();
+}
+
+$('loginForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  $('loginMsg').textContent = '';
+  try {
+    await start($('keyInput').value.trim());
+  } catch (e) {
+    if (e.message !== '401') $('loginMsg').textContent = 'Sunucuya ulaşılamadı (' + e.message + '). Sunucu uykudaysa ~1 dk sonra tekrar deneyin.';
+  }
+});
+$('logout').addEventListener('click', () => logout());
+$('device').addEventListener('change', () => { device = $('device').value; refreshLatest(); loadSeries(); loadEvents(); });
+
+/* ---------------------------------------------------------------- son durum */
+
+async function refreshLatest(list) {
+  try {
+    list = list || await api('/api/v1/latest');
+    const d = list.find((x) => x.device === device);
+    if (!d || !d.last) { $('status').textContent = 'Henüz veri yok.'; return; }
+    const L = d.last;
+    $('t').textContent = L.temp === null ? 'HATA' : L.temp.toFixed(2);
+    $('v').textContent = num(L.v, 3);
+    $('vx').textContent = num(L.vx, 3);
+    $('vy').textContent = num(L.vy, 3);
+    $('vz').textContent = num(L.vz, 3);
+    const active = ALARMS.filter((a) => L.flags & a.flag);
+    $('cardT').classList.toggle('alarm', !!(L.flags & 5));
+    $('cardV').classList.toggle('alarm', !!(L.flags & 2));
+    $('alarmCard').classList.toggle('alarm', active.length > 0);
+    $('alarms').innerHTML = active.length
+      ? active.map((a) => `<div class="err"><b>${a.code}</b> ${a.desc}</div>`).join('')
+      : '<span class="okc">Yok</span>';
+    const age = Date.now() / 1000 - L.ts;
+    const live = age < 60;
+    $('status').innerHTML = (live ? '<span class="okc">● Canlı</span>' : '<span class="err">● Cihazdan ' + ago(age) + 'dir veri gelmiyor</span>')
+      + ` &nbsp;|&nbsp; son veri: ${fmt(L.ts)} &nbsp;|&nbsp; toplam ${d.records.toLocaleString('tr-TR')} ölçüm, ${d.events} olay`
+      + ` &nbsp;|&nbsp; ilk kayıt: ${fmt(d.first_ts)}`;
+  } catch (e) {
+    if (e.message !== '401') $('status').innerHTML = '<span class="err">Sunucuya ulaşılamıyor</span>';
+  }
+}
+
+/* ---------------------------------------------------------------- grafik */
+
+function tickFmt(v) {
+  const d = new Date(v * 1000);
+  const hm = d.toLocaleTimeString('tr-TR', {hour: '2-digit', minute: '2-digit'});
+  if (rangeH && rangeH <= 24) return hm;
+  return d.toLocaleDateString('tr-TR', {day: '2-digit', month: '2-digit'}) + ' ' + hm;
+}
+
+function buildChart() {
+  if (chart || typeof Chart === 'undefined') {
+    if (typeof Chart === 'undefined') $('chartMsg').textContent = 'Grafik kütüphanesi yüklenemedi.';
+    return;
+  }
+  const mk = (label, color, axis, extra) => Object.assign(
+    {label, borderColor: color, backgroundColor: color, yAxisID: axis, data: [], borderWidth: 1.5, pointRadius: 0, tension: 0.2}, extra || {});
+  const alarmPt = (mask) => (ctx) => (flagsArr[ctx.dataIndex] & mask) ? 3 : 0;
+  chart = new Chart($('chart'), {
+    type: 'line',
+    data: {datasets: [
+      mk('Sıcaklık (°C)', '#d35400', 'y', {pointRadius: alarmPt(1), pointBackgroundColor: '#c0392b', pointBorderColor: '#c0392b'}),
+      mk('Titreşim toplam (g)', '#2471a3', 'y1', {pointRadius: alarmPt(2), pointBackgroundColor: '#c0392b', pointBorderColor: '#c0392b'}),
+      mk('Titreşim X (g)', '#27ae60', 'y1', {hidden: true}),
+      mk('Titreşim Y (g)', '#8e44ad', 'y1', {hidden: true}),
+      mk('Titreşim Z (g)', '#7f8c8d', 'y1', {hidden: true}),
+    ]},
+    options: {
+      animation: false, parsing: false, normalized: true, maintainAspectRatio: false,
+      interaction: {mode: 'nearest', axis: 'x', intersect: false},
+      scales: {
+        x: {type: 'linear', ticks: {callback: tickFmt, maxRotation: 0, autoSkipPadding: 24}},
+        y: {position: 'left', title: {display: true, text: '°C'}},
+        y1: {position: 'right', title: {display: true, text: 'g'}, grid: {drawOnChartArea: false}, min: 0},
+      },
+      plugins: {tooltip: {callbacks: {title: (items) => items.length ? fmt(items[0].parsed.x) : ''}}},
+    },
+  });
+}
+
+async function loadSeries() {
+  if (!device) return;
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const from = rangeH ? now - rangeH * 3600 : 0;
+    const d = await api(`/api/v1/series?device=${encodeURIComponent(device)}&from=${from}&to=${now}&points=600`);
+    lastSeries = d;
+    const rows = d.rows;   // [t, sicaklik, vx, vy, vz, v, flags]
+    flagsArr = rows.map((r) => r[6]);
+    if (chart) {
+      const ds = chart.data.datasets;
+      ds[0].data = rows.map((r) => ({x: r[0], y: r[1]}));
+      ds[1].data = rows.map((r) => ({x: r[0], y: r[5]}));
+      ds[2].data = rows.map((r) => ({x: r[0], y: r[2]}));
+      ds[3].data = rows.map((r) => ({x: r[0], y: r[3]}));
+      ds[4].data = rows.map((r) => ({x: r[0], y: r[4]}));
+      chart.update();
+    }
+    $('chartMsg').textContent = rows.length
+      ? `${rows.length} nokta` + (d.bucket > 10 ? ` (her nokta ${ago(d.bucket)}lik özet: sıcaklık ortalama, titreşim en yüksek)` : '') + '. Kırmızı noktalar alarm anları.'
+      : 'Bu aralıkta kayıt yok.';
+  } catch (e) {
+    if (e.message !== '401') $('chartMsg').textContent = 'Grafik verisi alınamadı.';
+  }
+}
+
+$('ranges').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-h]');
+  if (!b) return;
+  rangeH = Number(b.dataset.h);
+  document.querySelectorAll('#ranges button[data-h]').forEach((x) => x.classList.toggle('on', x === b));
+  loadSeries();
+});
+
+$('csv').addEventListener('click', () => {
+  if (!lastSeries || !lastSeries.rows.length) return;
+  const c = (v, d) => (v === null ? '' : Number(v).toFixed(d).replace('.', ','));
+  const lines = ['zaman;sicaklik_C;titresim_x_g;titresim_y_g;titresim_z_g;titresim_toplam_max_g;alarmlar'];
+  for (const r of lastSeries.rows) {
+    const al = ALARMS.filter((a) => r[6] & a.flag).map((a) => a.code).join(' ');
+    lines.push([new Date(r[0] * 1000).toLocaleString('tr-TR'), c(r[1], 2), c(r[2], 3), c(r[3], 3), c(r[4], 3), c(r[5], 3), al].join(';'));
+  }
+  const blob = new Blob(['﻿' + lines.join('\r\n')], {type: 'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${device}_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+/* ---------------------------------------------------------------- olaylar */
+
+async function loadEvents() {
+  if (!device) return;
+  try {
+    const ev = await api(`/api/v1/events?device=${encodeURIComponent(device)}&limit=200`);
+    $('evCount').textContent = ev.length >= 200 ? 'son 200 olay' : ev.length + ' olay';
+    $('events').innerHTML = ev.length ? ev.map((e) => {
+      const dec = e.code === 'E01' ? 2 : 3;
+      return `<tr class="${esc(e.state)}"><td>${fmt(e.ts)}</td><td><b>${esc(e.code)}</b></td><td>${STATE[e.state] || esc(e.state)}</td>`
+        + `<td>${num(e.value, dec)}</td><td>${num(e.limit, dec)}</td><td>${esc(e.desc)}</td></tr>`;
+    }).join('') : '<tr><td colspan="6">Kayıtlı olay yok</td></tr>';
+  } catch (e) {}
+}
+
+/* ---------------------------------------------------------------- baslat */
+
+setInterval(() => { if (key) refreshLatest(); }, 10000);
+setInterval(() => { if (key) { loadSeries(); loadEvents(); } }, 30000);
+
+let saved = '';
+try { saved = localStorage.getItem(KEY_STORE) || ''; } catch (e) {}
+if (saved) start(saved).catch(() => {});
+</script>
+</body>
+</html>
