@@ -1,0 +1,1008 @@
+[
+  {
+    "id": "tab_stm32iot",
+    "type": "tab",
+    "label": "STM32 IoT İzleme",
+    "disabled": false,
+    "info": "STM32F103 + ESP32 sensör verilerinin MQTT ile izlenmesi.\n\nMQTT konu öneki: `stm32iot-fa6dbb/cihaz01`"
+  },
+  {
+    "id": "mqtt_broker",
+    "type": "mqtt-broker",
+    "name": "MQTT Broker",
+    "broker": "broker.hivemq.com",
+    "port": "1883",
+    "clientid": "",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "autoUnsubscribe": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthRetain": "false",
+    "birthPayload": "",
+    "birthMsg": {},
+    "closeTopic": "",
+    "closeQos": "0",
+    "closeRetain": "false",
+    "closePayload": "",
+    "closeMsg": {},
+    "willTopic": "",
+    "willQos": "0",
+    "willRetain": "false",
+    "willPayload": "",
+    "willMsg": {},
+    "userProps": "",
+    "sessionExpiry": ""
+  },
+  {
+    "id": "ui_base",
+    "type": "ui-base",
+    "name": "STM32 IoT",
+    "path": "/dashboard",
+    "appIcon": "",
+    "includeClientData": true,
+    "acceptsClientConfig": [
+      "ui-notification",
+      "ui-control"
+    ],
+    "showPathInSidebar": false,
+    "headerContent": "page",
+    "navigationStyle": "default",
+    "titleBarStyle": "default",
+    "showReconnectNotification": true,
+    "notificationDisplayTime": 1,
+    "showDisconnectNotification": true,
+    "allowInstall": false
+  },
+  {
+    "id": "ui_theme",
+    "type": "ui-theme",
+    "name": "Sensör Teması",
+    "colors": {
+      "surface": "#1d2733",
+      "primary": "#2471a3",
+      "bgPage": "#f4f6f8",
+      "groupBg": "#ffffff",
+      "groupOutline": "#d9d9e0"
+    },
+    "sizes": {
+      "density": "default",
+      "pagePadding": "12px",
+      "groupGap": "12px",
+      "groupBorderRadius": "8px",
+      "widgetGap": "12px"
+    }
+  },
+  {
+    "id": "ui_page",
+    "type": "ui-page",
+    "name": "Sensör İzleme",
+    "ui": "ui_base",
+    "path": "/izleme",
+    "icon": "chart-line",
+    "layout": "grid",
+    "theme": "ui_theme",
+    "breakpoints": [
+      {
+        "name": "Default",
+        "px": 0,
+        "cols": 3
+      },
+      {
+        "name": "Tablet",
+        "px": 576,
+        "cols": 6
+      },
+      {
+        "name": "Small Desktop",
+        "px": 768,
+        "cols": 9
+      },
+      {
+        "name": "Desktop",
+        "px": 1024,
+        "cols": 12
+      }
+    ],
+    "order": 1,
+    "className": "",
+    "visible": "true",
+    "disabled": "false"
+  },
+  {
+    "id": "g_live",
+    "type": "ui-group",
+    "name": "Canlı Değerler",
+    "page": "ui_page",
+    "width": "6",
+    "height": "1",
+    "order": 1,
+    "showTitle": true,
+    "className": "",
+    "visible": "true",
+    "disabled": "false",
+    "groupType": "default"
+  },
+  {
+    "id": "g_state",
+    "type": "ui-group",
+    "name": "Durum ve Alarmlar",
+    "page": "ui_page",
+    "width": "6",
+    "height": "1",
+    "order": 2,
+    "showTitle": true,
+    "className": "",
+    "visible": "true",
+    "disabled": "false",
+    "groupType": "default"
+  },
+  {
+    "id": "g_temp",
+    "type": "ui-group",
+    "name": "Sıcaklık Grafiği",
+    "page": "ui_page",
+    "width": "6",
+    "height": "1",
+    "order": 3,
+    "showTitle": true,
+    "className": "",
+    "visible": "true",
+    "disabled": "false",
+    "groupType": "default"
+  },
+  {
+    "id": "g_vib",
+    "type": "ui-group",
+    "name": "Titreşim Grafiği",
+    "page": "ui_page",
+    "width": "6",
+    "height": "1",
+    "order": 4,
+    "showTitle": true,
+    "className": "",
+    "visible": "true",
+    "disabled": "false",
+    "groupType": "default"
+  },
+  {
+    "id": "g_set",
+    "type": "ui-group",
+    "name": "Set Değerleri",
+    "page": "ui_page",
+    "width": "4",
+    "height": "1",
+    "order": 5,
+    "showTitle": true,
+    "className": "",
+    "visible": "true",
+    "disabled": "false",
+    "groupType": "default"
+  },
+  {
+    "id": "g_events",
+    "type": "ui-group",
+    "name": "Alarm / Olay Geçmişi",
+    "page": "ui_page",
+    "width": "8",
+    "height": "1",
+    "order": 6,
+    "showTitle": true,
+    "className": "",
+    "visible": "true",
+    "disabled": "false",
+    "groupType": "default"
+  },
+  {
+    "id": "mqtt_in",
+    "type": "mqtt in",
+    "z": "tab_stm32iot",
+    "name": "ESP32 (tüm konular)",
+    "topic": "stm32iot-fa6dbb/cihaz01/#",
+    "qos": "1",
+    "datatype": "auto-detect",
+    "broker": "mqtt_broker",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 140,
+    "y": 260,
+    "wires": [
+      [
+        "f_route"
+      ]
+    ]
+  },
+  {
+    "id": "f_route",
+    "type": "function",
+    "z": "tab_stm32iot",
+    "name": "Konuya göre ayır",
+    "func": "// <onek>/<yaprak> -> cikis\nconst leaf = msg.topic.split('/').pop();\nconst idx = {telemetry: 0, event: 1, status: 2, settings: 3, info: 4}[leaf];\nif (idx === undefined) return null;\nconst out = [null, null, null, null, null];\nout[idx] = msg;\nreturn out;",
+    "outputs": 5,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 360,
+    "y": 260,
+    "wires": [
+      [
+        "f_telemetry",
+        "trig_live"
+      ],
+      [
+        "f_event"
+      ],
+      [
+        "f_status"
+      ],
+      [
+        "f_settings"
+      ],
+      [
+        "f_info"
+      ]
+    ]
+  },
+  {
+    "id": "f_telemetry",
+    "type": "function",
+    "z": "tab_stm32iot",
+    "name": "Telemetri",
+    "func": "const d = msg.payload;\nif (typeof d !== 'object' || d === null) return null;\n\nconst ts = d.ts ? d.ts * 1000 : Date.now();\nconst zaman = new Date(ts).toLocaleString('tr-TR', {timeZone: 'Europe/Istanbul'});\nconst alarms = (d.alarms || []);\nconst tempTxt = d.temp === null ? 'HATA' : d.temp.toFixed(2);\n\nconst tempSeries = [];\nif (d.temp !== null) tempSeries.push({topic: 'Sıcaklık (°C)', payload: d.temp});\ntempSeries.push({topic: 'Set', payload: d.tset});\n\nconst vibSeries = [\n    {topic: 'Toplam (g)', payload: d.v},\n    {topic: 'X', payload: d.vx},\n    {topic: 'Y', payload: d.vy},\n    {topic: 'Z', payload: d.vz},\n    {topic: 'Set', payload: d.vset},\n];\n\nconst alarmTxt = alarms.length ? 'AKTİF: ' + alarms.join(', ') : 'Yok';\n\n// Gunluk CSV kaydi (Node-RED kullanici klasoru altinda)\nconst day = new Date(ts).toLocaleDateString('sv-SE', {timeZone: 'Europe/Istanbul'});\nconst dir = path.join(os.homedir(), 'stm32iot_kayit');\nconst filename = path.join(dir, day + '.csv');\nlet header = '';\nif (flow.get('csvFile') !== filename) {\n    flow.set('csvFile', filename);\n    if (!fs.existsSync(filename)) header = 'zaman;sicaklik_C;titresim_x_g;titresim_y_g;titresim_z_g;titresim_toplam_g;alarmlar\\n';\n}\nconst num = v => (v === null || v === undefined) ? '' : String(v).replace('.', ',');\nconst line = header + [zaman, num(d.temp), num(d.vx), num(d.vy), num(d.vz), num(d.v), alarms.join(' ')].join(';');\n\nreturn [\n    {payload: d.temp === null ? 0 : d.temp},\n    {payload: d.v},\n    tempSeries,   // dizi: ayni cikistan birden fazla mesaj\n    vibSeries,\n    {payload: tempTxt + ' °C  /  ' + d.v.toFixed(3) + ' g'},\n    {payload: alarmTxt},\n    {payload: zaman},\n    {payload: line, filename: filename},\n];",
+    "outputs": 8,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [
+      {
+        "var": "fs",
+        "module": "fs"
+      },
+      {
+        "var": "os",
+        "module": "os"
+      },
+      {
+        "var": "path",
+        "module": "path"
+      }
+    ],
+    "x": 600,
+    "y": 140,
+    "wires": [
+      [
+        "gauge_temp"
+      ],
+      [
+        "gauge_vib"
+      ],
+      [
+        "chart_temp"
+      ],
+      [
+        "chart_vib"
+      ],
+      [
+        "txt_values"
+      ],
+      [
+        "txt_alarms"
+      ],
+      [
+        "txt_lastseen"
+      ],
+      [
+        "file_telemetry"
+      ]
+    ]
+  },
+  {
+    "id": "gauge_temp",
+    "type": "ui-gauge",
+    "z": "tab_stm32iot",
+    "group": "g_live",
+    "order": 1,
+    "width": 3,
+    "height": 3,
+    "name": "Sıcaklık",
+    "gtype": "gauge-half",
+    "gstyle": "needle",
+    "title": "Sıcaklık",
+    "alwaysShowTitle": false,
+    "floatingTitlePosition": "top-left",
+    "units": "°C",
+    "icon": "",
+    "prefix": "",
+    "suffix": "",
+    "segments": [
+      {
+        "from": "0",
+        "color": "#5cd65c"
+      },
+      {
+        "from": "40",
+        "color": "#ffc800"
+      },
+      {
+        "from": "60",
+        "color": "#ea5353"
+      }
+    ],
+    "min": 0,
+    "max": 100,
+    "sizeThickness": 16,
+    "sizeGap": 4,
+    "sizeKeyThickness": 8,
+    "styleRounded": true,
+    "styleGlow": false,
+    "className": "",
+    "value": "payload",
+    "valueType": "msg",
+    "x": 900,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "gauge_vib",
+    "type": "ui-gauge",
+    "z": "tab_stm32iot",
+    "group": "g_live",
+    "order": 2,
+    "width": 3,
+    "height": 3,
+    "name": "Titreşim (toplam RMS)",
+    "gtype": "gauge-half",
+    "gstyle": "needle",
+    "title": "Titreşim (toplam RMS)",
+    "alwaysShowTitle": false,
+    "floatingTitlePosition": "top-left",
+    "units": "g",
+    "icon": "",
+    "prefix": "",
+    "suffix": "",
+    "segments": [
+      {
+        "from": "0",
+        "color": "#5cd65c"
+      },
+      {
+        "from": "0.5",
+        "color": "#ffc800"
+      },
+      {
+        "from": "1",
+        "color": "#ea5353"
+      }
+    ],
+    "min": 0,
+    "max": 2,
+    "sizeThickness": 16,
+    "sizeGap": 4,
+    "sizeKeyThickness": 8,
+    "styleRounded": true,
+    "styleGlow": false,
+    "className": "",
+    "value": "payload",
+    "valueType": "msg",
+    "x": 900,
+    "y": 80,
+    "wires": []
+  },
+  {
+    "id": "chart_temp",
+    "type": "ui-chart",
+    "z": "tab_stm32iot",
+    "group": "g_temp",
+    "name": "Sıcaklık (son 30 dk)",
+    "label": "Sıcaklık (son 30 dk)",
+    "order": 1,
+    "chartType": "line",
+    "category": "topic",
+    "categoryType": "msg",
+    "xAxisLabel": "",
+    "xAxisProperty": "",
+    "xAxisPropertyType": "timestamp",
+    "xAxisType": "time",
+    "xAxisFormat": "",
+    "xAxisFormatType": "auto",
+    "yAxisLabel": "°C",
+    "yAxisProperty": "payload",
+    "yAxisPropertyType": "msg",
+    "ymin": "",
+    "ymax": "",
+    "action": "append",
+    "stackSeries": false,
+    "pointShape": "false",
+    "pointRadius": 0,
+    "showLegend": true,
+    "removeOlder": "30",
+    "removeOlderUnit": "60",
+    "removeOlderPoints": "",
+    "colors": [
+      "#d35400",
+      "#7f8c8d",
+      "#2471a3"
+    ],
+    "textColor": [
+      "#666666"
+    ],
+    "textColorDefault": true,
+    "gridColor": [
+      "#e5e5e5"
+    ],
+    "gridColorDefault": true,
+    "width": 6,
+    "height": 8,
+    "className": "",
+    "interpolation": "linear",
+    "x": 900,
+    "y": 120,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "chart_vib",
+    "type": "ui-chart",
+    "z": "tab_stm32iot",
+    "group": "g_vib",
+    "name": "Titreşim RMS (son 30 dk)",
+    "label": "Titreşim RMS (son 30 dk)",
+    "order": 1,
+    "chartType": "line",
+    "category": "topic",
+    "categoryType": "msg",
+    "xAxisLabel": "",
+    "xAxisProperty": "",
+    "xAxisPropertyType": "timestamp",
+    "xAxisType": "time",
+    "xAxisFormat": "",
+    "xAxisFormatType": "auto",
+    "yAxisLabel": "g",
+    "yAxisProperty": "payload",
+    "yAxisPropertyType": "msg",
+    "ymin": "",
+    "ymax": "",
+    "action": "append",
+    "stackSeries": false,
+    "pointShape": "false",
+    "pointRadius": 0,
+    "showLegend": true,
+    "removeOlder": "30",
+    "removeOlderUnit": "60",
+    "removeOlderPoints": "",
+    "colors": [
+      "#2471a3",
+      "#27ae60",
+      "#8e44ad",
+      "#f39c12",
+      "#7f8c8d"
+    ],
+    "textColor": [
+      "#666666"
+    ],
+    "textColorDefault": true,
+    "gridColor": [
+      "#e5e5e5"
+    ],
+    "gridColorDefault": true,
+    "width": 6,
+    "height": 8,
+    "className": "",
+    "interpolation": "linear",
+    "x": 900,
+    "y": 160,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "txt_values",
+    "type": "ui-text",
+    "z": "tab_stm32iot",
+    "group": "g_live",
+    "order": 3,
+    "width": 0,
+    "height": 0,
+    "name": "Anlık",
+    "label": "Anlık",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "style": false,
+    "font": "",
+    "fontSize": 16,
+    "color": "#717171",
+    "wrapText": true,
+    "className": "",
+    "value": "payload",
+    "valueType": "msg",
+    "x": 900,
+    "y": 200,
+    "wires": []
+  },
+  {
+    "id": "txt_alarms",
+    "type": "ui-text",
+    "z": "tab_stm32iot",
+    "group": "g_state",
+    "order": 3,
+    "width": 0,
+    "height": 0,
+    "name": "Aktif alarmlar",
+    "label": "Aktif alarmlar",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "style": false,
+    "font": "",
+    "fontSize": 16,
+    "color": "#717171",
+    "wrapText": true,
+    "className": "",
+    "value": "payload",
+    "valueType": "msg",
+    "x": 900,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "txt_lastseen",
+    "type": "ui-text",
+    "z": "tab_stm32iot",
+    "group": "g_state",
+    "order": 4,
+    "width": 0,
+    "height": 0,
+    "name": "Son veri",
+    "label": "Son veri",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "style": false,
+    "font": "",
+    "fontSize": 16,
+    "color": "#717171",
+    "wrapText": true,
+    "className": "",
+    "value": "payload",
+    "valueType": "msg",
+    "x": 900,
+    "y": 280,
+    "wires": []
+  },
+  {
+    "id": "file_telemetry",
+    "type": "file",
+    "z": "tab_stm32iot",
+    "name": "Günlük CSV kaydı",
+    "filename": "filename",
+    "filenameType": "msg",
+    "appendNewline": true,
+    "createDir": true,
+    "overwriteFile": "false",
+    "encoding": "utf8",
+    "x": 920,
+    "y": 320,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "trig_live",
+    "type": "trigger",
+    "z": "tab_stm32iot",
+    "name": "5 sn veri yoksa uyar",
+    "op1": "Canlı veri alınıyor",
+    "op2": "UYARI: 5 saniyedir veri gelmiyor",
+    "op1type": "str",
+    "op2type": "str",
+    "duration": "5",
+    "extend": true,
+    "overrideDelay": false,
+    "units": "s",
+    "reset": "",
+    "bytopic": "all",
+    "topic": "topic",
+    "outputs": 1,
+    "x": 610,
+    "y": 380,
+    "wires": [
+      [
+        "txt_flow"
+      ]
+    ]
+  },
+  {
+    "id": "txt_flow",
+    "type": "ui-text",
+    "z": "tab_stm32iot",
+    "group": "g_state",
+    "order": 2,
+    "width": 0,
+    "height": 0,
+    "name": "Veri akışı",
+    "label": "Veri akışı",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "style": false,
+    "font": "",
+    "fontSize": 16,
+    "color": "#717171",
+    "wrapText": true,
+    "className": "",
+    "value": "payload",
+    "valueType": "msg",
+    "x": 900,
+    "y": 380,
+    "wires": []
+  },
+  {
+    "id": "f_event",
+    "type": "function",
+    "z": "tab_stm32iot",
+    "name": "Olay kaydı",
+    "func": "const e = msg.payload;\nif (typeof e !== 'object' || e === null) return null;\n\nconst ts = e.ts ? e.ts * 1000 : Date.now();\nconst zaman = new Date(ts).toLocaleString('tr-TR', {timeZone: 'Europe/Istanbul'});\nconst STATE = {BASLADI: 'Başladı', BITTI: 'Bitti', BILGI: 'Bilgi'};\nconst dec = e.code === 'E01' ? 2 : 3;\nconst fmt = v => (v === null || v === undefined) ? '-' : Number(v).toFixed(dec);\n\nconst row = {\n    'Zaman': zaman,\n    'Kod': e.code,\n    'Durum': STATE[e.state] || e.state,\n    'Değer': fmt(e.value),\n    'Limit': fmt(e.limit),\n    'Açıklama': e.desc,\n};\nconst list = flow.get('events') || [];\nlist.unshift(row);\nif (list.length > 200) list.length = 200;\nflow.set('events', list);\n\nlet note = null;\nif (e.state === 'BASLADI') {\n    note = {payload: `${e.code} ${e.desc} (değer ${fmt(e.value)}, limit ${fmt(e.limit)}) - ${zaman}`};\n}\n\nconst dir = path.join(os.homedir(), 'stm32iot_kayit');\nconst filename = path.join(dir, 'olaylar.csv');\nlet header = fs.existsSync(filename) ? '' : 'zaman;kod;durum;deger;limit;aciklama\\n';\nconst num = v => (v === null || v === undefined) ? '' : String(v).replace('.', ',');\nconst line = header + [zaman, e.code, e.state, num(e.value), num(e.limit), e.desc].join(';');\n\nreturn [{payload: list}, note, {payload: line, filename: filename}];",
+    "outputs": 3,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [
+      {
+        "var": "fs",
+        "module": "fs"
+      },
+      {
+        "var": "os",
+        "module": "os"
+      },
+      {
+        "var": "path",
+        "module": "path"
+      }
+    ],
+    "x": 600,
+    "y": 460,
+    "wires": [
+      [
+        "table_events"
+      ],
+      [
+        "notify_alarm"
+      ],
+      [
+        "file_events"
+      ]
+    ]
+  },
+  {
+    "id": "table_events",
+    "type": "ui-table",
+    "z": "tab_stm32iot",
+    "group": "g_events",
+    "name": "Olay geçmişi",
+    "label": "",
+    "order": 1,
+    "width": 8,
+    "height": 0,
+    "maxrows": 10,
+    "passthru": false,
+    "autocols": true,
+    "showSearch": true,
+    "deselect": true,
+    "selectionType": "none",
+    "columns": [],
+    "mobileBreakpoint": "sm",
+    "mobileBreakpointType": "defaults",
+    "action": "replace",
+    "className": "",
+    "x": 900,
+    "y": 440,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "notify_alarm",
+    "type": "ui-notification",
+    "z": "tab_stm32iot",
+    "ui": "ui_base",
+    "position": "top right",
+    "colorDefault": false,
+    "color": "#c0392b",
+    "displayTime": "8",
+    "showCountdown": true,
+    "outputs": 1,
+    "allowDismiss": true,
+    "dismissText": "Kapat",
+    "allowConfirm": false,
+    "confirmText": "Onayla",
+    "raw": false,
+    "className": "",
+    "name": "Alarm bildirimi",
+    "x": 910,
+    "y": 480,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "file_events",
+    "type": "file",
+    "z": "tab_stm32iot",
+    "name": "Olay CSV kaydı",
+    "filename": "filename",
+    "filenameType": "msg",
+    "appendNewline": true,
+    "createDir": true,
+    "overwriteFile": "false",
+    "encoding": "utf8",
+    "x": 910,
+    "y": 520,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "f_status",
+    "type": "function",
+    "z": "tab_stm32iot",
+    "name": "Cihaz durumu",
+    "func": "const online = String(msg.payload) === 'online';\nconst zaman = new Date().toLocaleString('tr-TR', {timeZone: 'Europe/Istanbul'});\nreturn {payload: (online ? 'Çevrimiçi' : 'ÇEVRİMDIŞI') + ' (' + zaman + ')'};",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 600,
+    "y": 580,
+    "wires": [
+      [
+        "txt_status"
+      ]
+    ]
+  },
+  {
+    "id": "txt_status",
+    "type": "ui-text",
+    "z": "tab_stm32iot",
+    "group": "g_state",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "name": "ESP32",
+    "label": "ESP32",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "style": false,
+    "font": "",
+    "fontSize": 16,
+    "color": "#717171",
+    "wrapText": true,
+    "className": "",
+    "value": "payload",
+    "valueType": "msg",
+    "x": 900,
+    "y": 580,
+    "wires": []
+  },
+  {
+    "id": "f_info",
+    "type": "function",
+    "z": "tab_stm32iot",
+    "name": "Cihaz bilgisi",
+    "func": "const d = msg.payload || {};\nreturn {payload: `IP ${d.ip}  |  Wi-Fi ${d.rssi} dBm  |  FW ${d.fw}`};",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 600,
+    "y": 620,
+    "wires": [
+      [
+        "txt_info"
+      ]
+    ]
+  },
+  {
+    "id": "txt_info",
+    "type": "ui-text",
+    "z": "tab_stm32iot",
+    "group": "g_state",
+    "order": 5,
+    "width": 0,
+    "height": 0,
+    "name": "Cihaz",
+    "label": "Cihaz",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "style": false,
+    "font": "",
+    "fontSize": 16,
+    "color": "#717171",
+    "wrapText": true,
+    "className": "",
+    "value": "payload",
+    "valueType": "msg",
+    "x": 900,
+    "y": 620,
+    "wires": []
+  },
+  {
+    "id": "f_settings",
+    "type": "function",
+    "z": "tab_stm32iot",
+    "name": "Mevcut set değerleri",
+    "func": "const s = msg.payload || {};\nflow.set('settings', s);\nreturn [\n    {payload: {tset: s.tset, vset: s.vset, logint: s.logint}},\n    {payload: `Sıcaklık ${Number(s.tset).toFixed(1)} °C  |  Titreşim ${Number(s.vset).toFixed(3)} g  |  ESP32 kayıt aralığı ${s.logint} s`},\n];",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 600,
+    "y": 680,
+    "wires": [
+      [
+        "form_set"
+      ],
+      [
+        "txt_set"
+      ]
+    ]
+  },
+  {
+    "id": "txt_set",
+    "type": "ui-text",
+    "z": "tab_stm32iot",
+    "group": "g_set",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "name": "Cihazdaki değerler",
+    "label": "Cihazdaki değerler",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "style": false,
+    "font": "",
+    "fontSize": 16,
+    "color": "#717171",
+    "wrapText": true,
+    "className": "",
+    "value": "payload",
+    "valueType": "msg",
+    "x": 900,
+    "y": 720,
+    "wires": []
+  },
+  {
+    "id": "form_set",
+    "type": "ui-form",
+    "z": "tab_stm32iot",
+    "name": "Set formu",
+    "group": "g_set",
+    "label": "",
+    "order": 2,
+    "width": 0,
+    "height": 0,
+    "options": [
+      {
+        "label": "Sıcaklık seti (°C)",
+        "key": "tset",
+        "type": "number",
+        "required": true,
+        "rows": null
+      },
+      {
+        "label": "Titreşim seti (g RMS)",
+        "key": "vset",
+        "type": "number",
+        "required": true,
+        "rows": null
+      },
+      {
+        "label": "Kayıt aralığı (s)",
+        "key": "logint",
+        "type": "number",
+        "required": true,
+        "rows": null
+      }
+    ],
+    "formValue": {
+      "tset": "",
+      "vset": "",
+      "logint": ""
+    },
+    "payload": "",
+    "submit": "Cihaza gönder",
+    "cancel": "Temizle",
+    "resetOnSubmit": false,
+    "topic": "topic",
+    "topicType": "msg",
+    "splitLayout": "",
+    "className": "",
+    "passthru": false,
+    "dropdownOptions": [],
+    "x": 900,
+    "y": 680,
+    "wires": [
+      [
+        "f_setcmd"
+      ]
+    ]
+  },
+  {
+    "id": "f_setcmd",
+    "type": "function",
+    "z": "tab_stm32iot",
+    "name": "Set komutu",
+    "func": "const p = msg.payload || {};\nconst t = Number(p.tset), v = Number(p.vset), li = Math.round(Number(p.logint));\nconst err = [];\nif (!(t >= -55 && t <= 125)) err.push('sıcaklık -55..125 °C olmalı');\nif (!(v >= 0.001 && v <= 16)) err.push('titreşim 0.001..16 g olmalı');\nif (!(li >= 1 && li <= 3600)) err.push('kayıt aralığı 1..3600 s olmalı');\nif (err.length) return [null, {payload: 'Gönderilmedi: ' + err.join(', ')}];\nreturn [\n    {payload: JSON.stringify({tset: t, vset: v, logint: li})},\n    {payload: 'Set değerleri cihaza gönderildi'},\n];",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1120,
+    "y": 680,
+    "wires": [
+      [
+        "mqtt_out"
+      ],
+      [
+        "notify_info"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_out",
+    "type": "mqtt out",
+    "z": "tab_stm32iot",
+    "name": "ESP32 set komutu",
+    "topic": "stm32iot-fa6dbb/cihaz01/settings/set",
+    "qos": "1",
+    "retain": "false",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "mqtt_broker",
+    "x": 1360,
+    "y": 660,
+    "wires": []
+  },
+  {
+    "id": "notify_info",
+    "type": "ui-notification",
+    "z": "tab_stm32iot",
+    "ui": "ui_base",
+    "position": "top right",
+    "colorDefault": true,
+    "color": null,
+    "displayTime": "4",
+    "showCountdown": true,
+    "outputs": 1,
+    "allowDismiss": true,
+    "dismissText": "Kapat",
+    "allowConfirm": false,
+    "confirmText": "Onayla",
+    "raw": false,
+    "className": "",
+    "name": "Bilgi bildirimi",
+    "x": 1360,
+    "y": 700,
+    "wires": [
+      []
+    ]
+  }
+]

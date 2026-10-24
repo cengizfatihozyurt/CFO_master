@@ -1,0 +1,25 @@
+# --- Gizli bilgiler: ASLA commitlenmez ---
+ESP32/esp32_sensor_rx/secrets.h
+ESP32/node-red/mqtt_kullanicilar.txt
+*.env
+.env*
+
+# --- STM32CubeIDE derleme ciktilari ---
+Debug/
+Release/
+*.o
+*.d
+*.su
+*.cyclo
+*.elf
+*.map
+*.list
+
+# --- Yedek ve gunluk dosyalari ---
+*.bak
+*.log
+*.stlink.bak
+
+# --- API (Node.js) ---
+api/node_modules/
+api/*.db

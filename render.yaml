@@ -1,0 +1,23 @@
+# Render Blueprint: API servisi + Postgres veritabani
+# Render paneli -> New -> Blueprint -> bu repoyu sec
+services:
+  - type: web
+    name: stm32iot-api
+    runtime: node
+    plan: free
+    rootDir: api
+    buildCommand: npm install --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: API_KEY
+        sync: false          # Render kurulumda soracak; ESP32'deki API_KEY ile ayni olmali
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stm32iot-db
+          property: connectionString
+
+databases:
+  - name: stm32iot-db
+    plan: free               # Ucretsiz Postgres 30 gun sonra silinir; kalici kullanim icin yukselt
+    databaseName: stm32iot   # ya da DATABASE_URL'yi baska bir Postgres'e (or. Neon) yonlendir

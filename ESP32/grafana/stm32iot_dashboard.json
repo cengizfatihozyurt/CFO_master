@@ -1,0 +1,697 @@
+{
+  "dashboard": {
+    "uid": "stm32iot",
+    "title": "STM32 IoT Sensör İzleme",
+    "tags": [
+      "stm32",
+      "iot",
+      "mqtt"
+    ],
+    "timezone": "browser",
+    "refresh": "5s",
+    "schemaVersion": 39,
+    "editable": true,
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": [
+        "5s",
+        "10s",
+        "30s",
+        "1m",
+        "5m"
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "type": "stat",
+        "title": "Sıcaklık (son)",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-sensor"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 5
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "influxdb",
+              "uid": "influx-sensor"
+            },
+            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and r._field == \"temp\")\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> last()"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "celsius",
+            "decimals": 2,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "orange",
+                  "value": 40
+                },
+                {
+                  "color": "red",
+                  "value": 60
+                }
+              ]
+            },
+            "color": {
+              "mode": "thresholds"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "value",
+          "justifyMode": "center"
+        }
+      },
+      {
+        "id": 2,
+        "type": "stat",
+        "title": "Titreşim RMS (son)",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-sensor"
+        },
+        "gridPos": {
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 5
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "influxdb",
+              "uid": "influx-sensor"
+            },
+            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and r._field == \"v\")\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> last()"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "none",
+            "decimals": 3,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "orange",
+                  "value": 0.3
+                },
+                {
+                  "color": "red",
+                  "value": 1
+                }
+              ]
+            },
+            "color": {
+              "mode": "thresholds"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "value",
+          "justifyMode": "center"
+        }
+      },
+      {
+        "id": 3,
+        "type": "stat",
+        "title": "Aktif alarm",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-sensor"
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 0,
+          "w": 6,
+          "h": 5
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "influxdb",
+              "uid": "influx-sensor"
+            },
+            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and r._field == \"flags\")\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> last()"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {
+                "type": "value",
+                "options": {
+                  "0": {
+                    "text": "Yok",
+                    "color": "green"
+                  },
+                  "1": {
+                    "text": "E01 Sıcaklık",
+                    "color": "red"
+                  },
+                  "2": {
+                    "text": "E02 Titreşim",
+                    "color": "red"
+                  },
+                  "3": {
+                    "text": "E01 + E02",
+                    "color": "red"
+                  }
+                }
+              },
+              {
+                "type": "range",
+                "options": {
+                  "from": 4,
+                  "to": 255,
+                  "result": {
+                    "text": "Sensör/iletişim hatası",
+                    "color": "red"
+                  }
+                }
+              }
+            ],
+            "color": {
+              "mode": "fixed",
+              "fixedColor": "green"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "value",
+          "justifyMode": "center"
+        }
+      },
+      {
+        "id": 4,
+        "type": "stat",
+        "title": "Son veri",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-sensor"
+        },
+        "gridPos": {
+          "x": 18,
+          "y": 0,
+          "w": 6,
+          "h": 5
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "influxdb",
+              "uid": "influx-sensor"
+            },
+            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and r._field == \"v\")\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, _value: float(v: uint(v: now()) - uint(v: r._time)) / 1000000000.0}))"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 10
+                }
+              ]
+            },
+            "color": {
+              "mode": "thresholds"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "value",
+          "justifyMode": "center"
+        },
+        "description": "Son ölçümden bu yana geçen süre. 10 saniyeyi aşarsa veri akışı durmuş demektir."
+      },
+      {
+        "id": 5,
+        "type": "timeseries",
+        "title": "Sıcaklık",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-sensor"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 5,
+          "w": 24,
+          "h": 9
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "influxdb",
+              "uid": "influx-sensor"
+            },
+            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and (r._field == \"temp\" or r._field == \"tset\"))\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "celsius",
+            "decimals": 2,
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 8,
+              "showPoints": "never",
+              "spanNulls": 30000
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "temp"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "Sıcaklık"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "tset"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "Sıcaklık seti"
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          }
+        }
+      },
+      {
+        "id": 6,
+        "type": "timeseries",
+        "title": "Titreşim RMS (g)",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-sensor"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 14,
+          "w": 24,
+          "h": 9
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "influxdb",
+              "uid": "influx-sensor"
+            },
+            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and (r._field == \"v\" or r._field == \"vx\" or r._field == \"vy\" or r._field == \"vz\" or r._field == \"vset\"))\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "none",
+            "decimals": 3,
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 8,
+              "showPoints": "never",
+              "spanNulls": 30000
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "v"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "Toplam"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "vx"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "X"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "vy"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "Y"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "vz"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "Z"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "vset"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "Titreşim seti"
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          }
+        }
+      },
+      {
+        "id": 7,
+        "type": "state-timeline",
+        "title": "Alarm zaman çizelgesi",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-sensor"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 23,
+          "w": 24,
+          "h": 5
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "influxdb",
+              "uid": "influx-sensor"
+            },
+            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and (r._field == \"alarm_temp\" or r._field == \"alarm_vib\"))\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {
+                "type": "value",
+                "options": {
+                  "0": {
+                    "text": "Normal",
+                    "color": "green"
+                  },
+                  "1": {
+                    "text": "ALARM",
+                    "color": "red"
+                  }
+                }
+              }
+            ],
+            "color": {
+              "mode": "fixed",
+              "fixedColor": "green"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "alarm_temp"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "E01 Sıcaklık"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "alarm_vib"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "E02 Titreşim"
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "showValue": "never",
+          "mergeValues": true,
+          "rowHeight": 0.8,
+          "legend": {
+            "showLegend": false
+          }
+        }
+      },
+      {
+        "id": 8,
+        "type": "table",
+        "title": "Alarm / olay geçmişi",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-sensor"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 28,
+          "w": 24,
+          "h": 10
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "influxdb",
+              "uid": "influx-sensor"
+            },
+            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"event\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> keep(columns: [\"_time\", \"code\", \"state\", \"value\", \"limit\", \"desc\"])\n  |> sort(columns: [\"_time\"], desc: true)"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "indexByName": {
+                "_time": 0,
+                "code": 1,
+                "state": 2,
+                "value": 3,
+                "limit": 4,
+                "desc": 5
+              },
+              "renameByName": {
+                "_time": "Zaman",
+                "code": "Kod",
+                "state": "Durum",
+                "value": "Değer",
+                "limit": "Limit",
+                "desc": "Açıklama"
+              }
+            }
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "left"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Durum"
+              },
+              "properties": [
+                {
+                  "id": "mappings",
+                  "value": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "BASLADI": {
+                          "text": "Başladı",
+                          "color": "red"
+                        },
+                        "BITTI": {
+                          "text": "Bitti",
+                          "color": "green"
+                        },
+                        "BILGI": {
+                          "text": "Bilgi",
+                          "color": "blue"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "custom.cellOptions",
+                  "value": {
+                    "type": "color-text"
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Zaman"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 190
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Kod"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 70
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "showHeader": true,
+          "cellHeight": "sm"
+        }
+      }
+    ]
+  },
+  "overwrite": true
+}
