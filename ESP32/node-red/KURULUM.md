@@ -38,6 +38,7 @@ Aynı ağdaki telefondan: `http://<bilgisayarın IP adresi>:1880/dashboard/izlem
 | Durum ve Alarmlar | ESP32 çevrimiçi/çevrimdışı, veri akışı (5 sn veri gelmezse uyarı), aktif alarmlar, son veri zamanı, IP / Wi-Fi gücü |
 | Sıcaklık / Titreşim Grafiği | Son 30 dakika, set çizgisiyle birlikte; X/Y/Z eksenleri lejanttan açılıp kapatılır |
 | Set Değerleri | Cihazdaki güncel değerler + form; "Cihaza gönder" MQTT ile ESP32'ye yollar, ESP32 kaydeder (elektrik kesilse de kalır) |
+| Anomali Ayarları | Anomali modu ve normal değerler; **otomatik öğrenme** (süre dk + onay kutusu) ve **manuel giriş** (duruş ortalaması, σ, en uzun sefer, sefer tepe sınırı; "Mevcut değerleri doldur") |
 | Alarm / Olay Geçmişi | Son 200 olay, aranabilir tablo; alarm başlayınca kırmızı bildirim |
 
 ## 4. Kayıtlar (veri toplama)
@@ -62,7 +63,8 @@ ESP32 kendi üzerinde de 16 bayt/kayıtla ~8.9 gün (10 s aralık) veri tutar. �
 | `<önek>/status` | ESP32 → | `online` / `offline` (retained, ESP32 koparsa broker `offline` yayınlar) |
 | `<önek>/info` | ESP32 → | `{"ip","rssi","fw"}` (retained) |
 | `<önek>/settings` | ESP32 → | Güncel set değerleri (retained) |
-| `<önek>/settings/set` | → ESP32 | `{"tset":40,"vset":0.5,"logint":10}` |
+| `<önek>/anomaly` | ESP32 → | Anomali modu ve değerleri `{"manual","learnMin","mode","learn","mu","sigma","rideMax","peakLim","rides"}` (retained, değişince ve 30 sn'de bir) |
+| `<önek>/settings/set` | → ESP32 | `{"tset":40,"vset":0.5,"logint":10}`; anomali: `{"learnmin":10}` ya da `{"man_mu":..,"man_sigma":..,"man_ridemax":..,"man_peak":..}` |
 
 Hata kodları: E01 sıcaklık seti aşıldı, E02 titreşim seti aşıldı, E03 DS18B20 hatası, E04 STM32 iletişimi kesildi, I01 set değiştirildi, I02 kayıtlar silindi.
 

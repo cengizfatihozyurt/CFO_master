@@ -47,6 +47,8 @@
  *                        ast: anomali modu (0 ogreniyor, 1 durus, 2 hareket), az: durusa gore z-skoru
  *   <base>/event         her olay: {"ts","code","state","value","limit","desc"} (QoS1)
  *   <base>/settings      guncel set degerleri {"tset","vset","logint"} (retained)
+ *   <base>/anomaly       anomali modu/degerleri {"manual","learnMin","mode","learn","mu","sigma",
+ *                        "rideMax","peakLim","rides"} (retained, degisince ve 30 sn'de bir)
  *   <base>/settings/set  ESP32 dinler: {"tset":..,"vset":..,"logint":..} (eksik alan eski degerde kalir)
  *                        {"learnmin":N} N dk otomatik ogrenme, {"relearn":1} mevcut sureyle,
  *                        {"man_mu","man_sigma","man_ridemax","man_peak"} manuel anomali degerleri
@@ -212,6 +214,7 @@ static bool     alarmActive[AL_COUNT];
 static uint32_t alarmSince[AL_COUNT];
 
 #define ANOM_SAVE_MS  600000UL   // ogrenilen normal NVS'ye 10 dk'da bir yazilir
+#define ANOM_PUB_MS   30000UL    // anomali ayarlari MQTT'ye 30 sn'de bir (retained)
 
 static AnomalyDetector anom;
 static uint32_t lastAnomSaveMs = 0;
@@ -373,6 +376,18 @@ static void mqttPublishSettings()
   snprintf(j, sizeof(j), "{\"tset\":%.2f,\"vset\":%.3f,\"logint\":%u}",
            settings.tempSet, settings.vibSet, settings.logInterval);
   mqttPublish("settings", j, 1, true);
+}
+
+// Anomali modu ve normal durum degerleri (Node-RED ayar paneli icin, retained)
+static void mqttPublishAnomaly()
+{
+  char j[256];
+  snprintf(j, sizeof(j),
+           "{\"manual\":%s,\"learnMin\":%u,\"mode\":%u,\"learn\":%.3f,\"mu\":%.4f,\"sigma\":%.4f,"
+           "\"rideMax\":%.0f,\"peakLim\":%.3f,\"rides\":%lu}",
+           anom.isManual() ? "true" : "false", anom.p.learnS / 60, anom.mode, anom.learnProgress(),
+           anom.mu(), anom.sigma(), anom.rideDurLimitNow(), anom.ridePeakLimitNow(), (unsigned long)anom.p.nRides);
+  mqttPublish("anomaly", j, 0, true);   // QoS0: baglanti yokken birikmez, baglaninca yeniden yayinlanir
 }
 
 static void mqttPublishInfo()
@@ -566,11 +581,18 @@ static void evaluateAnomalies()
              anom.mu(), anom.sigma());
     appendEvent("I03", "BILGI", anom.mu(), anom.sigma(), desc);
     saveAnomaly();
+    mqttPublishAnomaly();
   }
   for (int i = 0; i < AN_COUNT; i++) {
     setAlarm(AL_SHOCK + i, anom.active[i], anom.value[i], anom.limit[i]);
   }
   if (millis() - lastAnomSaveMs > ANOM_SAVE_MS) saveAnomaly();
+
+  static uint32_t lastPubMs = 0;   // ogrenme ilerlemesi ve EWMA icin ara yayin
+  if (millis() - lastPubMs > ANOM_PUB_MS) {
+    lastPubMs = millis();
+    mqttPublishAnomaly();
+  }
 }
 
 static void clearAnomalyAlarms()
@@ -588,6 +610,7 @@ static bool startAutoLearning(long minutes, const char *source)
   char desc[96];
   snprintf(desc, sizeof(desc), "Otomatik öğrenme başlatıldı (%s): %ld dk", source, minutes);
   appendEvent("I04", "BILGI", NAN, NAN, desc);
+  mqttPublishAnomaly();
   return true;
 }
 
@@ -605,6 +628,7 @@ static bool applyManualAnomaly(float mu, float sigma, long rideMaxS, float peakG
   snprintf(desc, sizeof(desc), "Anomali değerleri elle girildi (%s): duruş %.4f g / sigma %.4f g / sefer en fazla %ld s / tepe en fazla %.3f g",
            source, mu, sigma, rideMaxS, peakG);
   appendEvent("I05", "BILGI", mu, sigma, desc);
+  mqttPublishAnomaly();
   return true;
 }
 
@@ -1597,6 +1621,7 @@ static void mqttProcess()
     mqttPublish("status", "online", 1, true);
     mqttPublishInfo();
     mqttPublishSettings();
+    mqttPublishAnomaly();
     Serial.println("MQTT baglandi");
   }
 

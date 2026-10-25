@@ -211,7 +211,7 @@
         "page": "ui_page",
         "width": "8",
         "height": "1",
-        "order": 6,
+        "order": 7,
         "showTitle": true,
         "className": "",
         "visible": "true",
@@ -244,8 +244,8 @@
         "type": "function",
         "z": "tab_stm32iot",
         "name": "Konuya göre ayır",
-        "func": "// <onek>/<yaprak> -> cikis\nconst leaf = msg.topic.split('/').pop();\nconst idx = {telemetry: 0, event: 1, status: 2, settings: 3, info: 4}[leaf];\nif (idx === undefined) return null;\nconst out = [null, null, null, null, null];\nout[idx] = msg;\nreturn out;",
-        "outputs": 5,
+        "func": "// <onek>/<yaprak> -> cikis\nconst leaf = msg.topic.split('/').pop();\nconst idx = {telemetry: 0, event: 1, status: 2, settings: 3, info: 4, anomaly: 5}[leaf];\nif (idx === undefined) return null;\nconst out = [null, null, null, null, null, null];\nout[idx] = msg;\nreturn out;",
+        "outputs": 6,
         "timeout": 0,
         "noerr": 0,
         "initialize": "",
@@ -271,6 +271,9 @@
             ],
             [
                 "f_info"
+            ],
+            [
+                "f_anom_state"
             ]
         ]
     },
@@ -1145,5 +1148,286 @@
         "x": 900,
         "y": 260,
         "wires": []
+    },
+    {
+        "id": "g_anom",
+        "type": "ui-group",
+        "name": "Anomali Ayarları",
+        "page": "ui_page",
+        "width": "6",
+        "height": "1",
+        "order": 6,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "f_anom_state",
+        "type": "function",
+        "z": "tab_stm32iot",
+        "name": "Anomali durumu",
+        "func": "const a = msg.payload;\nif (typeof a !== 'object' || a === null) return null;\nflow.set('anomaly', a);\n\nconst MODES = ['Öğreniyor', 'Duruş', 'Hareket'];\nconst src = a.manual ? 'Manuel değerler' : 'Otomatik (' + a.learnMin + ' dk öğrenme)';\nconst st = a.mode === 0 ? 'Öğreniyor %' + Math.floor(a.learn * 100) : MODES[a.mode];\nconst peak = Number(a.peakLim).toFixed(3);\nconst ride = a.manual ? 'sefer ≤ ' + a.rideMax + ' s, tepe ≤ ' + peak + ' g'\n    : a.rides >= 10 ? a.rides + ' sefer öğrenildi, sefer ≤ ' + a.rideMax + ' s, tepe ≤ ' + peak + ' g'\n    : 'sefer ≤ ' + a.rideMax + ' s, tepe kontrolü ' + a.rides + '/10 seferden sonra';\nconst txt = src + '  ·  ' + st + '  ·  duruş ' + Number(a.mu).toFixed(4) + ' g, σ ' + Number(a.sigma).toFixed(4) + ' g  ·  ' + ride;\n\nconst key = [a.manual, a.learnMin, a.rideMax, peak].join('|');\nif (flow.get('anomalyKey') === key) return [{payload: txt}, null, null];\nflow.set('anomalyKey', key);\nreturn [\n    {payload: txt},\n    {payload: {learnmin: a.learnMin, onay: false}},\n    a.manual ? {payload: {man_mu: a.mu, man_sigma: a.sigma, man_ridemax: a.rideMax, man_peak: Number(peak)}} : null,\n];",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 900,
+        "y": 780,
+        "wires": [
+            [
+                "txt_anom_cfg"
+            ],
+            [
+                "form_anom_auto"
+            ],
+            [
+                "form_anom_man"
+            ]
+        ]
+    },
+    {
+        "id": "txt_anom_cfg",
+        "type": "ui-text",
+        "z": "tab_stm32iot",
+        "group": "g_anom",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "name": "Anomali modu",
+        "label": "Anomali modu",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#717171",
+        "wrapText": true,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 1200,
+        "y": 760,
+        "wires": []
+    },
+    {
+        "id": "form_anom_auto",
+        "type": "ui-form",
+        "z": "tab_stm32iot",
+        "name": "Otomatik öğrenme formu",
+        "group": "g_anom",
+        "label": "",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "options": [
+            {
+                "label": "Otomatik öğrenme süresi (dk)",
+                "key": "learnmin",
+                "type": "number",
+                "required": true,
+                "rows": null
+            },
+            {
+                "label": "Mevcut normal durum silinip yeniden öğrenilsin (asansör normal çalışırken)",
+                "key": "onay",
+                "type": "checkbox",
+                "required": false,
+                "rows": null
+            }
+        ],
+        "formValue": {
+            "learnmin": "",
+            "onay": false
+        },
+        "payload": "",
+        "submit": "Otomatik öğrenmeyi başlat",
+        "cancel": "",
+        "resetOnSubmit": false,
+        "topic": "topic",
+        "topicType": "msg",
+        "splitLayout": "",
+        "className": "",
+        "passthru": false,
+        "dropdownOptions": [],
+        "x": 1200,
+        "y": 800,
+        "wires": [
+            [
+                "f_anom_auto"
+            ]
+        ]
+    },
+    {
+        "id": "f_anom_auto",
+        "type": "function",
+        "z": "tab_stm32iot",
+        "name": "Otomatik öğrenme komutu",
+        "func": "const p = msg.payload || {};\nconst m = Math.round(Number(p.learnmin));\nif (!(m >= 1 && m <= 240)) return [null, {payload: 'Gönderilmedi: öğrenme süresi 1..240 dk olmalı'}];\nif (!p.onay) return [null, {payload: 'Gönderilmedi: onay kutusunu işaretleyin'}];\nreturn [\n    {payload: JSON.stringify({learnmin: m})},\n    {payload: 'Otomatik öğrenme başlatıldı: ' + m + ' dk. Bu sürede karta dokunmayın.'},\n];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1400,
+        "y": 800,
+        "wires": [
+            [
+                "mqtt_out"
+            ],
+            [
+                "notify_info"
+            ]
+        ]
+    },
+    {
+        "type": "ui-button",
+        "z": "tab_stm32iot",
+        "group": "g_anom",
+        "width": 0,
+        "height": 0,
+        "emulateClick": false,
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "",
+        "iconPosition": "left",
+        "payload": "",
+        "payloadType": "str",
+        "topic": "topic",
+        "topicType": "msg",
+        "buttonColor": "",
+        "textColor": "",
+        "iconColor": "",
+        "enableClick": true,
+        "enablePointerdown": false,
+        "pointerdownPayload": "",
+        "pointerdownPayloadType": "str",
+        "enablePointerup": false,
+        "pointerupPayload": "",
+        "pointerupPayloadType": "str",
+        "id": "btn_anom_fill",
+        "name": "Mevcut değerleri doldur",
+        "label": "Mevcut değerleri doldur",
+        "order": 3,
+        "x": 1200,
+        "y": 840,
+        "wires": [
+            [
+                "f_anom_fill"
+            ]
+        ]
+    },
+    {
+        "id": "f_anom_fill",
+        "type": "function",
+        "z": "tab_stm32iot",
+        "name": "Formu mevcut değerlerle doldur",
+        "func": "const a = flow.get('anomaly');\nif (!a) return null;\nconst peak = Number(a.peakLim) > 0 ? Number(a.peakLim) : Math.max(a.mu + 20 * a.sigma, 0.05);\nreturn {payload: {\n    man_mu: Number(Number(a.mu).toFixed(4)),\n    man_sigma: Number(Number(a.sigma).toFixed(4)),\n    man_ridemax: a.rideMax,\n    man_peak: Number(peak.toFixed(3)),\n}};",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1400,
+        "y": 840,
+        "wires": [
+            [
+                "form_anom_man"
+            ]
+        ]
+    },
+    {
+        "id": "form_anom_man",
+        "type": "ui-form",
+        "z": "tab_stm32iot",
+        "name": "Manuel giriş formu",
+        "group": "g_anom",
+        "label": "",
+        "order": 4,
+        "width": 0,
+        "height": 0,
+        "options": [
+            {
+                "label": "Duruş titreşimi ortalaması (g)",
+                "key": "man_mu",
+                "type": "number",
+                "required": true,
+                "rows": null
+            },
+            {
+                "label": "Duruş titreşimi sapması σ (g)",
+                "key": "man_sigma",
+                "type": "number",
+                "required": true,
+                "rows": null
+            },
+            {
+                "label": "En uzun normal sefer (s)",
+                "key": "man_ridemax",
+                "type": "number",
+                "required": true,
+                "rows": null
+            },
+            {
+                "label": "Sefer tepe titreşimi sınırı (g)",
+                "key": "man_peak",
+                "type": "number",
+                "required": true,
+                "rows": null
+            }
+        ],
+        "formValue": {
+            "man_mu": "",
+            "man_sigma": "",
+            "man_ridemax": "",
+            "man_peak": ""
+        },
+        "payload": "",
+        "submit": "Manuel değerleri uygula",
+        "cancel": "Temizle",
+        "resetOnSubmit": false,
+        "topic": "topic",
+        "topicType": "msg",
+        "splitLayout": "",
+        "className": "",
+        "passthru": false,
+        "dropdownOptions": [],
+        "x": 1200,
+        "y": 880,
+        "wires": [
+            [
+                "f_anom_man"
+            ]
+        ]
+    },
+    {
+        "id": "f_anom_man",
+        "type": "function",
+        "z": "tab_stm32iot",
+        "name": "Manuel değer komutu",
+        "func": "// ESP32 ile ayni kurallar (applyManualAnomaly)\nconst p = msg.payload || {};\nconst mu = Number(p.man_mu), sg = Number(p.man_sigma), rm = Math.round(Number(p.man_ridemax)), pk = Number(p.man_peak);\nconst err = [];\nif (!(mu >= 0 && mu <= 2)) err.push('ortalama 0..2 g');\nif (!(sg >= 0.0005 && sg <= 1)) err.push('sapma 0.0005..1 g');\nif (!(rm >= 5 && rm <= 3600)) err.push('sefer 5..3600 s');\nif (!(pk > mu && pk <= 16)) err.push('tepe sınırı ortalamadan büyük ve en fazla 16 g');\nif (err.length) return [null, {payload: 'Gönderilmedi: ' + err.join(', ')}];\nreturn [\n    {payload: JSON.stringify({man_mu: mu, man_sigma: sg, man_ridemax: rm, man_peak: pk})},\n    {payload: 'Manuel değerler cihaza gönderildi'},\n];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1400,
+        "y": 880,
+        "wires": [
+            [
+                "mqtt_out"
+            ],
+            [
+                "notify_info"
+            ]
+        ]
     }
 ]

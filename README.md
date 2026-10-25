@@ -41,7 +41,7 @@ Bilgisayardaki Mosquitto, ESP32'nin mesajlarını TLS (8883) üzerinden HiveMQ C
 
 | Yön | Konular |
 |---|---|
-| Yerel → bulut | `telemetry`, `event`, `status`, `info`, `settings` |
+| Yerel → bulut | `telemetry`, `event`, `status`, `info`, `settings`, `anomaly` |
 | Bulut → yerel | `settings/set` (set değerleri buluttan da değiştirilebilir) |
 
 Kurulum (Windows, yönetici):
@@ -109,7 +109,7 @@ https://stm32iot-api-fh72.onrender.com adresi tarayıcıda bir panel açar: canl
 
 Sabit eşik alarmlarına (E01/E02) ek olarak ESP32, cihazın **normal davranışını öğrenip ondan sapmayı** yakalar. Kod: [`ESP32/esp32_sensor_rx/anomali.h`](ESP32/esp32_sensor_rx/anomali.h) (Arduino'dan bağımsız saf C++).
 
-1. **Normal durum (iki yol, ESP32 web panelindeki "Anomali Tespiti" kartından seçilir):**
+1. **Normal durum (iki yol; ESP32 web panelindeki "Anomali Tespiti" kartından ya da Node-RED panelindeki "Anomali Ayarları" grubundan seçilir):**
    - **Otomatik öğrenme:** süre kullanıcı tarafından seçilir (1–240 dk, varsayılan 10). Bu sürede duruş titreşiminin ortalaması (μ) ve standart sapması (σ) hesaplanır; temas/darbe gibi aşırı değerler dışarıda bırakılır. Sonra μ/σ yalnızca normal duruş ölçümleriyle yavaşça (EWMA, ~30 dk) güncellenir ve normal seferlerden sefer profili öğrenilir.
    - **Manuel giriş:** duruş ortalaması μ, sapma σ, en uzun normal sefer (s) ve sefer tepe sınırı (g) elle girilir; sistem bunları kendiliğinden değiştirmez (EWMA ve sefer profili kapalı). "Mevcut değerleri doldur" düğmesi öğrenilmiş değerleri forma getirir. Ani darbe eşiği, sefer tepe sınırının 2 katıdır (en az 0,15 g).
 

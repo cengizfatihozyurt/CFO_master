@@ -21,5 +21,6 @@ topic stm32iot-fa6dbb/cihaz01/event out 1
 topic stm32iot-fa6dbb/cihaz01/status out 1
 topic stm32iot-fa6dbb/cihaz01/info out 1
 topic stm32iot-fa6dbb/cihaz01/settings out 1
+topic stm32iot-fa6dbb/cihaz01/anomaly out 0
 # Bulut -> yerel (set degerleri buluttan da degistirilebilir)
 topic stm32iot-fa6dbb/cihaz01/settings/set in 1
