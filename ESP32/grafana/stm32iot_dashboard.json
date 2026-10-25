@@ -176,7 +176,7 @@
               "type": "influxdb",
               "uid": "influx-sensor"
             },
-            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and r._field == \"flags\")\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> last()"
+            "query": "import \"bitwise\"\nimport \"strings\"\nfrom(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and r._field == \"flags\")\n  |> last()\n  |> map(fn: (r) => {\n      f = int(v: r._value)\n      c = (if bitwise.sand(a: f, b: 1) != 0 then \"E01 \" else \"\") + (if bitwise.sand(a: f, b: 2) != 0 then \"E02 \" else \"\")\n        + (if bitwise.sand(a: f, b: 4) != 0 then \"E03 \" else \"\") + (if bitwise.sand(a: f, b: 8) != 0 then \"E04 \" else \"\")\n        + (if bitwise.sand(a: f, b: 16) != 0 then \"A01 \" else \"\") + (if bitwise.sand(a: f, b: 32) != 0 then \"A02 \" else \"\")\n        + (if bitwise.sand(a: f, b: 64) != 0 then \"A03 \" else \"\") + (if bitwise.sand(a: f, b: 128) != 0 then \"A04 \" else \"\")\n      return {_time: r._time, _field: \"alarm\", _value: if f == 0 then \"Yok\" else strings.trimSpace(v: c)}\n    })"
           }
         ],
         "fieldConfig": {
@@ -185,31 +185,17 @@
               {
                 "type": "value",
                 "options": {
-                  "0": {
+                  "Yok": {
                     "text": "Yok",
                     "color": "green"
-                  },
-                  "1": {
-                    "text": "E01 Sıcaklık",
-                    "color": "red"
-                  },
-                  "2": {
-                    "text": "E02 Titreşim",
-                    "color": "red"
-                  },
-                  "3": {
-                    "text": "E01 + E02",
-                    "color": "red"
                   }
                 }
               },
               {
-                "type": "range",
+                "type": "regex",
                 "options": {
-                  "from": 4,
-                  "to": 255,
+                  "pattern": "^[AE]0",
                   "result": {
-                    "text": "Sensör/iletişim hatası",
                     "color": "red"
                   }
                 }
@@ -234,7 +220,8 @@
           "graphMode": "none",
           "textMode": "value",
           "justifyMode": "center"
-        }
+        },
+        "description": "E01 sicaklik seti, E02 titresim seti, E03 sensor hatasi, E04 STM32 iletisimi, A01 darbe, A02 durusta titresim, A03 anormal sefer, A04 hizli isinma"
       },
       {
         "id": 4,
@@ -509,7 +496,7 @@
               "type": "influxdb",
               "uid": "influx-sensor"
             },
-            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and (r._field == \"alarm_temp\" or r._field == \"alarm_vib\"))\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)"
+            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and (r._field == \"alarm_temp\" or r._field == \"alarm_vib\" or r._field == \"alarm_sensor\" or r._field == \"alarm_link\"))\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)"
           }
         ],
         "fieldConfig": {
@@ -556,6 +543,30 @@
                 {
                   "id": "displayName",
                   "value": "E02 Titreşim"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "alarm_sensor"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "E03 Sensör hatası"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "alarm_link"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "E04 STM32 iletişimi"
                 }
               ]
             }
