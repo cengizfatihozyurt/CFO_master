@@ -1,0 +1,25 @@
+# Bulut MQTT koprusu: yerel Mosquitto -> HiveMQ Cloud (TLS 8883)
+# ESP32'nin mesajlari buluta da iletilir; buluttan yalnizca set komutu alinir.
+# Not: HiveMQ Cloud Serverless 31.12.2026'da kapanir; oncesinde EMQX'e tasinmali.
+connection hivemq_bulut
+address c6b99409cd8f46a382ca6eba365ebbfb.s1.eu.hivemq.cloud:8883
+bridge_protocol_version mqttv311
+bridge_cafile C:\ProgramData\STM32IoT\mosquitto\isrg_root_x1.pem
+bridge_insecure false
+remote_clientid stm32iot-kopru-pc
+remote_username stm32iot-kopru
+remote_password HIVEMQ_SIFRESI
+try_private false
+notifications false
+cleansession true
+keepalive_interval 60
+restart_timeout 10 60
+
+# Yerel -> bulut
+topic stm32iot-fa6dbb/cihaz01/telemetry out 0
+topic stm32iot-fa6dbb/cihaz01/event out 1
+topic stm32iot-fa6dbb/cihaz01/status out 1
+topic stm32iot-fa6dbb/cihaz01/info out 1
+topic stm32iot-fa6dbb/cihaz01/settings out 1
+# Bulut -> yerel (set degerleri buluttan da degistirilebilir)
+topic stm32iot-fa6dbb/cihaz01/settings/set in 1

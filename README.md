@@ -34,6 +34,26 @@ ADXL345 (SPI1)┘                               ├─ MQTT ──> Mosquitto �
 1. `ESP32/esp32_sensor_rx/secrets.example.h` dosyasını aynı klasöre `secrets.h` adıyla kopyala ve Wi-Fi, MQTT ve API bilgilerini doldur. (`secrets.h` GitHub'a gönderilmez.)
 2. Arduino IDE → kart: **DOIT ESP32 DEVKIT V1** → yükle.
 
+## Bulut MQTT (HiveMQ Cloud köprüsü)
+
+Bilgisayardaki Mosquitto, ESP32'nin mesajlarını TLS (8883) üzerinden HiveMQ Cloud'a köprüler; ESP32'de değişiklik gerekmez.
+
+| Yön | Konular |
+|---|---|
+| Yerel → bulut | `telemetry`, `event`, `status`, `info`, `settings` |
+| Bulut → yerel | `settings/set` (set değerleri buluttan da değiştirilebilir) |
+
+Kurulum (Windows, yönetici):
+
+1. HiveMQ Cloud → cluster → **Access Management** → Publish and Subscribe yetkili kullanıcı (`stm32iot-kopru`).
+2. [`ESP32/mosquitto/kopru_hivemq.conf.example`](ESP32/mosquitto/kopru_hivemq.conf.example) dosyasını `C:\ProgramData\STM32IoT\mosquitto\conf.d\kopru_hivemq.conf` olarak kopyala, `remote_password`'u doldur; dosyayı yalnızca SYSTEM/Administrators okuyacak şekilde kısıtla.
+3. Let's Encrypt kök sertifikasını (ISRG Root X1, Windows sertifika deposunda var) `C:\ProgramData\STM32IoT\mosquitto\isrg_root_x1.pem` olarak dışa aktar.
+4. `mosquitto.conf` sonuna `include_dir C:\ProgramData\STM32IoT\mosquitto\conf.d` ekle ve Mosquitto servisini yeniden başlat.
+
+Doğrulama (2026-10-25): HiveMQ Cloud'a doğrudan abone olunarak telemetri/durum/bilgi mesajları görüldü; buluttan gönderilen `settings/set` komutu ESP32'de I01 olayı üretti.
+
+**Dikkat:** HiveMQ Cloud Serverless (ücretsiz) 30.09.2026'dan beri yeni cluster kabul etmiyor ve **31.12.2026'da kapanıyor** (veriler 07.01.2027'de silinir). Öncesinde köprü ücretsiz bir başka bulut broker'a (ör. EMQX Cloud Serverless) taşınmalı; yalnızca `address`, kullanıcı ve sertifika değişir.
+
 ## Bulut API (Render)
 
 ESP32 her kayıt aralığında (varsayılan 10 s) ölçümleri ve olayları HTTPS ile API'ye toplu gönderir.
