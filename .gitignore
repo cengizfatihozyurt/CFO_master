@@ -1,6 +1,9 @@
 # --- Gizli bilgiler: ASLA commitlenmez ---
 ESP32/esp32_sensor_rx/secrets.h
 ESP32/node-red/mqtt_kullanicilar.txt
+yedek_esp32_*/
+# Arduino derleme ciktisi (secrets.h icindeki sifreler ikili dosyaya gomulur)
+ESP32/**/build/
 *.env
 .env*
 
