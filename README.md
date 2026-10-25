@@ -6,6 +6,7 @@ STM32F103C8T6 ile sıcaklık (DS18B20) ve titreşim (ADXL345) ölçümü; ESP32 
 DS18B20 (PA1) ┐
               ├─ STM32F103 ──UART2──> ESP32 ──┬─ Web paneli + yerel kayıt (LittleFS)
 ADXL345 (SPI1)┘                               ├─ MQTT ──> Mosquitto ──> Node-RED ──> InfluxDB ──> Grafana
+                                              │             └─ köprü (TLS) ──> HiveMQ Cloud (bulut MQTT)
                                               └─ HTTPS ──> Bulut API (Render) ──> Postgres
 ```
 
