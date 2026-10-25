@@ -4,6 +4,9 @@ ESP32/node-red/mqtt_kullanicilar.txt
 yedek_esp32_*/
 # Arduino derleme ciktisi (secrets.h icindeki sifreler ikili dosyaya gomulur)
 ESP32/**/build/
+# Anomali simulatoru derleme ciktisi ve olusturulan veri dosyalari
+ESP32/anomali_sim/*.exe
+ESP32/anomali_sim/*.csv
 *.env
 .env*
 

@@ -571,6 +571,236 @@
         }
       },
       {
+        "id": 9,
+        "type": "timeseries",
+        "title": "Anomali skoru (z, duruş titreşimine göre)",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-sensor"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 28,
+          "w": 24,
+          "h": 8
+        },
+        "description": "ESP32 üzerinde hesaplanır: (v - öğrenilen duruş ortalaması) / sigma. 4 üstü: duruşta anormal titreşim adayı, 6 üstü: hareket (sefer).",
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "influxdb",
+              "uid": "influx-sensor"
+            },
+            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and (r._field == \"az\"))\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "decimals": 1,
+            "min": 0,
+            "color": {
+              "mode": "fixed",
+              "fixedColor": "blue"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "orange",
+                  "value": 4
+                },
+                {
+                  "color": "red",
+                  "value": 6
+                }
+              ]
+            },
+            "custom": {
+              "lineWidth": 1,
+              "fillOpacity": 10,
+              "showPoints": "never",
+              "spanNulls": 30000,
+              "thresholdsStyle": {
+                "mode": "line+area"
+              }
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "az"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "z-skoru"
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          }
+        }
+      },
+      {
+        "id": 10,
+        "type": "state-timeline",
+        "title": "Anomali zaman çizelgesi",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-sensor"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 36,
+          "w": 24,
+          "h": 7
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "influxdb",
+              "uid": "influx-sensor"
+            },
+            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and (r._field == \"ast\" or r._field == \"anom_shock\" or r._field == \"anom_idle\" or r._field == \"anom_ride\" or r._field == \"anom_temp\"))\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {
+                "type": "value",
+                "options": {
+                  "0": {
+                    "text": "Normal",
+                    "color": "green"
+                  },
+                  "1": {
+                    "text": "ANOMALİ",
+                    "color": "red"
+                  }
+                }
+              }
+            ],
+            "color": {
+              "mode": "fixed",
+              "fixedColor": "green"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "ast"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "Mod"
+                },
+                {
+                  "id": "mappings",
+                  "value": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "Öğreniyor",
+                          "color": "purple"
+                        },
+                        "1": {
+                          "text": "Duruş",
+                          "color": "blue"
+                        },
+                        "2": {
+                          "text": "Hareket",
+                          "color": "yellow"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "anom_shock"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "A01 Ani darbe"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "anom_idle"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "A02 Duruşta titreşim"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "anom_ride"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "A03 Anormal sefer"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "anom_temp"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "A04 Hızlı ısınma"
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "showValue": "never",
+          "mergeValues": true,
+          "rowHeight": 0.8,
+          "legend": {
+            "showLegend": false
+          }
+        }
+      },
+      {
         "id": 8,
         "type": "table",
         "title": "Alarm / olay geçmişi",
@@ -580,7 +810,7 @@
         },
         "gridPos": {
           "x": 0,
-          "y": 28,
+          "y": 43,
           "w": 24,
           "h": 10
         },

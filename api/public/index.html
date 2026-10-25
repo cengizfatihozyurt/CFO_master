@@ -118,6 +118,10 @@ const ALARMS = [
   {flag: 2, code: 'E02', desc: 'Titreşim set değerinin üzerinde'},
   {flag: 4, code: 'E03', desc: 'Sıcaklık sensörü hatası (DS18B20)'},
   {flag: 8, code: 'E04', desc: 'STM32 veri iletişimi kesildi'},
+  {flag: 0x10, code: 'A01', desc: 'Anomali: ani darbe'},
+  {flag: 0x20, code: 'A02', desc: 'Anomali: duruşta anormal titreşim'},
+  {flag: 0x40, code: 'A03', desc: 'Anomali: anormal sefer / uzun titreşim'},
+  {flag: 0x80, code: 'A04', desc: 'Anomali: hızlı ısınma'},
 ];
 const STATE = {BASLADI: 'Başladı', BITTI: 'Bitti', BILGI: 'Bilgi'};
 
@@ -197,8 +201,8 @@ async function refreshLatest(list) {
     $('vy').textContent = num(L.vy, 3);
     $('vz').textContent = num(L.vz, 3);
     const active = ALARMS.filter((a) => L.flags & a.flag);
-    $('cardT').classList.toggle('alarm', !!(L.flags & 5));
-    $('cardV').classList.toggle('alarm', !!(L.flags & 2));
+    $('cardT').classList.toggle('alarm', !!(L.flags & 0x85));   // E01, E03, A04
+    $('cardV').classList.toggle('alarm', !!(L.flags & 0x72));   // E02, A01, A02, A03
     $('alarmCard').classList.toggle('alarm', active.length > 0);
     $('alarms').innerHTML = active.length
       ? active.map((a) => `<div class="err"><b>${a.code}</b> ${a.desc}</div>`).join('')

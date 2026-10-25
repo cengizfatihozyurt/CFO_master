@@ -46,7 +46,7 @@ Yayına alma: Render → **New → Blueprint** → bu repo. `API_KEY` sorulduğu
 
 ### Bulut paneli
 
-https://stm32iot-api.onrender.com adresi tarayıcıda bir panel açar: canlı değerler, aktif alarmlar, seçilebilir zaman aralığında grafik (1 saat – tümü), CSV indirme ve olay geçmişi. Girişte erişim anahtarı sorulur:
+https://stm32iot-api-fh72.onrender.com adresi tarayıcıda bir panel açar: canlı değerler, aktif alarmlar, seçilebilir zaman aralığında grafik (1 saat – tümü), CSV indirme ve olay geçmişi. Girişte erişim anahtarı sorulur:
 
 - `VIEW_KEY` (önerilen): Render → servis → **Environment** bölümüne eklenen, **sadece okuma** yetkili panel şifresi. Arkadaşlarla bu paylaşılır; bu şifreyle veri yazılamaz.
 - `VIEW_KEY` tanımlı değilse `API_KEY` ile de giriş yapılabilir (yazma yetkili, paylaşmayın).
@@ -74,5 +74,40 @@ https://stm32iot-api.onrender.com adresi tarayıcıda bir panel açar: canlı de
 | E02 | Titreşim set değerinin üzerinde |
 | E03 | DS18B20 sensör hatası |
 | E04 | STM32 veri iletişimi kesildi |
+| A01 | Anomali: ani darbe |
+| A02 | Anomali: duruşta anormal titreşim |
+| A03 | Anomali: anormal sefer / uzun süreli titreşim |
+| A04 | Anomali: hızlı ısınma |
 | I01 | Set değerleri güncellendi |
 | I02 | Kayıtlar silindi |
+| I03 | Anomali modeli öğrenildi |
+| I04 | Anomali modeli sıfırlandı |
+
+## Anomali tespiti (uç birim)
+
+Sabit eşik alarmlarına (E01/E02) ek olarak ESP32, cihazın **normal davranışını öğrenip ondan sapmayı** yakalar. Kod: [`ESP32/esp32_sensor_rx/anomali.h`](ESP32/esp32_sensor_rx/anomali.h) (Arduino'dan bağımsız saf C++).
+
+1. **Öğrenme (ilk 10 dk):** duruş titreşiminin ortalaması (μ) ve standart sapması (σ) hesaplanır; temas/darbe gibi aşırı değerler dışarıda bırakılır. Sonra μ/σ yalnızca normal duruş ölçümleriyle yavaşça (EWMA, ~30 dk) güncellenir. Model NVS'de saklanır, elektrik kesilince kaybolmaz.
+2. **Durum ayrımı:** z = (v − μ) / σ. z > 6 (2 s) → **hareket** (sefer), z < 3 (3 s) → **duruş**. Asansör hareket ederken titreşim doğal olarak arttığı için her sefer alarm vermez. Normal seferlerin süresi ve tepe titreşimi ayrıca öğrenilir (sefer profili, 10 seferden sonra devreye girer).
+3. **Anomaliler:**
+
+| Kod | Koşul |
+|---|---|
+| A01 | Tek ölçümde v > max(0,15 g, μ + 30σ, 2 × sefer tepe sınırı) |
+| A02 | Duruşta son 10 s'nin **medyanı** > μ + 4σ (tekil darbeler etkilemez) |
+| A03 | Sefer süresi > ort + 4·std (en fazla 120 s) ya da sefer tepesi > ort + 4·std |
+| A04 | Son 5 dakikadaki sıcaklık artışı > 0,5 °C/dk |
+
+Durum ve skor MQTT telemetrisinde `ast` (0 öğreniyor, 1 duruş, 2 hareket) ve `az` (z-skoru) alanlarıyla yayınlanır; Grafana'da "Anomali skoru" ve "Anomali zaman çizelgesi" panellerinde görünür. ESP32 web panelindeki **Yeniden öğren** düğmesi (ya da MQTT `settings/set` ile `{"relearn":1}`) modeli sıfırlar; cihaz asansöre takıldıktan sonra bir kez yapılmalıdır.
+
+### Simülatör ile doğrulama
+
+[`ESP32/anomali_sim`](ESP32/anomali_sim) aynı `anomali.h`'yi bilgisayarda çalıştırır:
+
+```
+g++ -O2 -std=c++17 -o anomali_sim.exe anomali_sim.cpp
+anomali_sim.exe kayit.csv [cikti.csv]                     # gerçek 1 s kayıtları (t,v,temp)
+set GERCEK_VERI=kayit.csv & anomali_sim.exe --senaryo     # gerçek gürültü + bilinen olaylar
+```
+
+Senaryo; gerçek duruş gürültüsünden örneklenen arka plana 25 normal sefer, bir darbe, duruşta 60 s hafif titreşim (+4,5σ), 200 s süren bir sefer, 3 kat titreşimli bir sefer ve 10 dk ısınma ekler. 30 farklı rastgele senaryonun hepsinde 5/5 olay yakalandı, yanlış alarm olmadı (2026-10-25). Gerçek 41 dakikalık masa üstü kaydında yalnızca bir gerçek darbe (0,265 g) A01 olarak işaretlendi.

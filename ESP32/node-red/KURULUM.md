@@ -24,6 +24,8 @@ Dashboard eklentisi: sağ üst menü → **Manage palette** → **Install** → 
 
 Menü → **Import** → `stm32iot_flow.json` dosyasını seç → **Import** → **Deploy**.
 
+İçe aktardıktan sonra "STM32 IoT İzleme" sekmesine çift tıkla → **Environment Variables**: `INFLUX_TOKEN` değeri repoda `INFLUX_TOKEN_BURAYA` olarak durur; InfluxDB'de oluşturulan token'ı yaz. MQTT broker düğümüne de `nodered` kullanıcısının şifresini gir. Sonra **Deploy**.
+
 Panel: http://localhost:1880/dashboard/izleme
 
 Aynı ağdaki telefondan: `http://<bilgisayarın IP adresi>:1880/dashboard/izleme`

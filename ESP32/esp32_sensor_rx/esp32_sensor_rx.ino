@@ -24,6 +24,11 @@
  *   E01 Sicaklik set degerinin uzerinde      E03 Sicaklik sensoru hatasi
  *   E02 Titresim set degerinin uzerinde      E04 STM32 veri iletisimi kesildi
  *   I01 Set degerleri guncellendi            I02 Kayitlar silindi
+ *   I03 Anomali modeli ogrenildi             I04 Anomali modeli sifirlandi
+ *
+ * Anomali kodlari (uc birimde tespit, ayrintilar anomali.h):
+ *   A01 Ani darbe                            A03 Anormal sefer / uzun titresim
+ *   A02 Durusta anormal titresim             A04 Hizli isinma
  *
  * Web uclari:
  *   /            panel            /data      canli degerler (JSON)
@@ -31,14 +36,17 @@
  *   /storage     depolama durumu  /log.csv   tum kayitlar (Excel uyumlu)
  *   /events.csv  olay kaydi       /settings  POST: tset, vset, logint
  *   /clear       POST: tum kayitlari sil
+ *   /anomaly/reset  POST: anomali modelini sifirla, yeniden ogren
  *
  * MQTT (bulut, Node-RED ile izleme). Tum konular MQTT_BASE onekiyle:
  *   <base>/status        "online" / "offline" (retained, LWT)
  *   <base>/info          {"ip","rssi","fw"} (retained)
- *   <base>/telemetry     her paket (1 s): {"ts","temp","vx","vy","vz","v","flags","alarms","tset","vset"}
+ *   <base>/telemetry     her paket (1 s): {"ts","temp","vx","vy","vz","v","flags","alarms","tset","vset","ast","az"}
+ *                        ast: anomali modu (0 ogreniyor, 1 durus, 2 hareket), az: durusa gore z-skoru
  *   <base>/event         her olay: {"ts","code","state","value","limit","desc"} (QoS1)
  *   <base>/settings      guncel set degerleri {"tset","vset","logint"} (retained)
  *   <base>/settings/set  ESP32 dinler: {"tset":..,"vset":..,"logint":..} (eksik alan eski degerde kalir)
+ *                        {"relearn":1} anomali modelini sifirlar
  *
  * Bulut API (Render, api/ klasoru):
  *   Her kayit araliginda yazilan olcumler ve olaylar HTTPS ile API'ye toplu gonderilir.
@@ -55,6 +63,7 @@
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "secrets.h"
+#include "anomali.h"
 #include <math.h>
 #include <vector>
 #include <algorithm>
@@ -98,7 +107,7 @@ const char *WIFI_PASS = SECRET_WIFI_PASS;
 #define MQTT_USER   SECRET_MQTT_USER
 #define MQTT_PASS   SECRET_MQTT_PASS
 #define MQTT_BASE   "stm32iot-fa6dbb/cihaz01"   // Node-RED akisindaki onekle ayni olmali
-#define FW_VERSION  "1.3"
+#define FW_VERSION  "1.4"
 
 #define API_URL         SECRET_API_URL
 #define API_KEY         SECRET_API_KEY
@@ -170,7 +179,8 @@ struct Bucket {
   uint8_t  flags;
 };
 
-enum AlarmId { AL_TEMP, AL_VIB, AL_SENSOR, AL_LINK, AL_COUNT };
+// AL_SHOCK..AL_TEMPRATE sirasi anomali.h'deki AN_* sirasiyla ayni olmali
+enum AlarmId { AL_TEMP, AL_VIB, AL_SENSOR, AL_LINK, AL_SHOCK, AL_IDLEVIB, AL_RIDE, AL_TEMPRATE, AL_COUNT };
 
 struct AlarmDef {
   const char *code;
@@ -183,7 +193,12 @@ static const AlarmDef ALARMS[AL_COUNT] = {
   {"E02", "Titreşim set değerinin üzerinde",   0x02},
   {"E03", "Sıcaklık sensörü hatası (DS18B20)", 0x04},
   {"E04", "STM32 veri iletişimi kesildi",      0x08},
+  {"A01", "Anomali: ani darbe",                0x10},
+  {"A02", "Anomali: duruşta anormal titreşim", 0x20},
+  {"A03", "Anomali: anormal sefer / uzun titreşim", 0x40},
+  {"A04", "Anomali: hızlı ısınma (C/dk)",      0x80},
 };
+static_assert((int)AL_SHOCK + (int)AN_COUNT == (int)AL_COUNT, "anomali kodlari AN_* ile eslesmeli");
 
 SensorData sensor = {0};
 Settings   settings = {DEFAULT_TEMP_SET, DEFAULT_VIB_SET, DEFAULT_LOG_INT};
@@ -192,6 +207,11 @@ Preferences prefs;
 
 static bool     alarmActive[AL_COUNT];
 static uint32_t alarmSince[AL_COUNT];
+
+#define ANOM_SAVE_MS  600000UL   // ogrenilen normal NVS'ye 10 dk'da bir yazilir
+
+static AnomalyDetector anom;
+static uint32_t lastAnomSaveMs = 0;
 
 static std::vector<LogFile> logFiles;   // baslangic zamanina gore sirali
 static uint32_t logBytes = 0;
@@ -290,6 +310,30 @@ static void saveSettings()
   prefs.end();
 }
 
+// Anomali modeli (ogrenilen normal) elektrik kesilince kaybolmasin
+static void loadAnomaly()
+{
+  AnomPersist saved;
+  prefs.begin("anom", true);
+  size_t n = prefs.getBytes("st", &saved, sizeof(saved));
+  prefs.end();
+  if (n == sizeof(saved) && anom.load(saved)) {
+    Serial.printf("Anomali modeli yuklendi: %s, durus mu=%.4f g sigma=%.4f g, %lu sefer\n",
+                  saved.learned ? "ogrenilmis" : "ogreniliyor", anom.mu(), anom.sigma(),
+                  (unsigned long)saved.nRides);
+  } else {
+    Serial.printf("Anomali modeli yok, %d sn ogrenme ile baslanacak\n", ANOM_LEARN_S);
+  }
+}
+
+static void saveAnomaly()
+{
+  prefs.begin("anom", false);
+  prefs.putBytes("st", &anom.p, sizeof(anom.p));
+  prefs.end();
+  lastAnomSaveMs = millis();
+}
+
 /* --------------------------- MQTT ---------------------------------------- */
 
 static String mqttTopic(const char *leaf)
@@ -352,7 +396,7 @@ static uint8_t activeFlags();
 static void mqttPublishTelemetry()
 {
   if (!mqttConnected) return;
-  char temp[16], j[320], al[40] = "";
+  char temp[16], j[384], al[64] = "";
   jsonFloat(temp, sizeof(temp), sensor.tempValid ? sensor.temperature : NAN, 2);
   uint8_t flags = activeFlags();
   for (int i = 0; i < AL_COUNT; i++) {
@@ -365,9 +409,9 @@ static void mqttPublishTelemetry()
   }
   snprintf(j, sizeof(j),
            "{\"ts\":%lu,\"temp\":%s,\"vx\":%.3f,\"vy\":%.3f,\"vz\":%.3f,\"v\":%.3f,"
-           "\"flags\":%u,\"alarms\":[%s],\"tset\":%.2f,\"vset\":%.3f}",
+           "\"flags\":%u,\"alarms\":[%s],\"tset\":%.2f,\"vset\":%.3f,\"ast\":%u,\"az\":%.2f}",
            (unsigned long)nowEpoch(), temp, sensor.vibX, sensor.vibY, sensor.vibZ, sensor.vibTotal,
-           flags, al, settings.tempSet, settings.vibSet);
+           flags, al, settings.tempSet, settings.vibSet, anom.mode, anom.z);
   mqttPublish("telemetry", j, 0, false);
 }
 
@@ -504,6 +548,35 @@ static void evaluateAlarms()
   } else if (alarmActive[AL_VIB] && sensor.vibTotal <= settings.vibSet * VIB_HYST_RATIO) {
     setAlarm(AL_VIB, false, sensor.vibTotal, settings.vibSet);
   }
+}
+
+// Uc birimde anomali tespiti (anomali.h); her STM32 paketinde (1 s) calisir
+static void evaluateAnomalies()
+{
+  bool wasLearned = anom.p.learned;
+  anom.update(sensor.vibTotal, sensor.tempValid, sensor.temperature);
+
+  if (!wasLearned && anom.p.learned) {
+    char desc[128];
+    snprintf(desc, sizeof(desc), "Anomali modeli öğrenildi: duruş titreşimi %.4f g / sigma %.4f g",
+             anom.mu(), anom.sigma());
+    appendEvent("I03", "BILGI", anom.mu(), anom.sigma(), desc);
+    saveAnomaly();
+  }
+  for (int i = 0; i < AN_COUNT; i++) {
+    setAlarm(AL_SHOCK + i, anom.active[i], anom.value[i], anom.limit[i]);
+  }
+  if (millis() - lastAnomSaveMs > ANOM_SAVE_MS) saveAnomaly();
+}
+
+static void resetAnomaly(const char *source)
+{
+  anom.reset();
+  for (int i = 0; i < AN_COUNT; i++) setAlarm(AL_SHOCK + i, false, NAN, NAN);
+  saveAnomaly();
+  char desc[96];
+  snprintf(desc, sizeof(desc), "Anomali modeli sıfırlandı (%s): %d sn yeniden öğrenme", source, ANOM_LEARN_S);
+  appendEvent("I04", "BILGI", NAN, NAN, desc);
 }
 
 /* --------------------------- Veri kaydi ---------------------------------- */
@@ -648,6 +721,7 @@ static bool parseLine(char *line)
 static void onNewData()
 {
   evaluateAlarms();
+  evaluateAnomalies();
 
   if (sensor.tempValid) {
     acc.tSum += sensor.temperature;
@@ -760,6 +834,20 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <div id="activeAlarms">Yok</div>
 </section>
 
+<section class="card" id="anomCard">
+  <div class="row">
+    <h2>Anomali Tespiti (uç birim)</h2>
+    <button class="danger" id="relearnBtn">Yeniden öğren</button>
+  </div>
+  <section class="grid">
+    <div><div class="label">Durum</div><div class="value" id="anMode">-</div></div>
+    <div><div class="label">Anomali skoru (z)</div><div class="value" id="anZ">-</div><div class="sub">duruş titreşimine göre, 4 üstü dikkat</div></div>
+    <div><div class="label">Öğrenilen duruş titreşimi</div><div class="value"><span id="anMu">-</span> <span class="unit">g</span></div><div class="sub" id="anSigma"></div></div>
+    <div><div class="label">Öğrenilen seferler</div><div class="value" id="anRides">-</div><div class="sub" id="anRideInfo"></div></div>
+  </section>
+  <div class="bar" id="anLearnBar" style="display:none"><div id="anLearn"></div></div>
+</section>
+
 <section class="card">
   <div class="row">
     <h2>Grafik</h2>
@@ -850,8 +938,22 @@ async function updateLive() {
     if (!formDirty) { $('inT').value = d.tset.toFixed(1); $('inV').value = d.vset.toFixed(3); $('inI').value = d.logint; }
 
     const codes = d.alarms.map(a => a.code);
-    $('cardT').classList.toggle('alarm', codes.includes('E01') || codes.includes('E03'));
-    $('cardV').classList.toggle('alarm', codes.includes('E02'));
+    $('cardT').classList.toggle('alarm', ['E01', 'E03', 'A04'].some(c => codes.includes(c)));
+    $('cardV').classList.toggle('alarm', ['E02', 'A01', 'A02', 'A03'].some(c => codes.includes(c)));
+
+    const an = d.anom;
+    const learning = an.mode === 0;
+    $('anMode').textContent = learning ? 'Öğreniyor %' + Math.floor(an.learn * 100)
+      : an.mode === 2 ? 'Hareket (' + an.rideSec + ' s)' : 'Duruş';
+    $('anZ').textContent = learning ? '-' : an.z.toFixed(1);
+    $('anMu').textContent = an.mu.toFixed(4);
+    $('anSigma').textContent = 'sigma ' + an.sigma.toFixed(4) + ' g';
+    $('anRides').textContent = an.rides;
+    $('anRideInfo').textContent = an.rides > 1 ? 'ort. ' + an.rideDur.toFixed(0) + ' s, tepe ' + an.ridePeak.toFixed(3) + ' g'
+      : '10 seferden sonra sefer kontrolü başlar';
+    $('anLearnBar').style.display = learning ? '' : 'none';
+    $('anLearn').style.width = (an.learn * 100).toFixed(1) + '%';
+    $('anomCard').classList.toggle('alarm', codes.some(c => c[0] === 'A'));
     $('alarmCard').classList.toggle('alarm', d.alarms.length > 0);
     $('activeAlarms').innerHTML = d.alarms.length
       ? d.alarms.map(a => `<div class="err"><b>${a.code}</b> ${esc(a.desc)} &mdash; başlangıç: ${fmt(a.since)}</div>`).join('')
@@ -999,6 +1101,12 @@ $('setForm').addEventListener('submit', async ev => {
   }
 });
 
+$('relearnBtn').addEventListener('click', async () => {
+  if (!confirm('Anomali modeli silinip 10 dk boyunca yeniden öğrenilecek. Bu sürede asansör normal çalışmalı. Devam?')) return;
+  try { await getJSON('/anomaly/reset', {method:'POST'}); } catch (e) {}
+  updateLive(); loadEvents();
+});
+
 $('clearBtn').addEventListener('click', async () => {
   if (!confirm('Tüm veri ve olay kayıtları silinecek. Emin misiniz?')) return;
   try { await getJSON('/clear', {method:'POST'}); } catch (e) {}
@@ -1058,6 +1166,12 @@ static void handleData()
     first = false;
   }
   j += "],";
+  snprintf(b, sizeof(b),
+           "\"anom\":{\"mode\":%u,\"z\":%.2f,\"learn\":%.3f,\"mu\":%.4f,\"sigma\":%.4f,\"rides\":%lu,"
+           "\"rideSec\":%lu,\"rideDur\":%.1f,\"ridePeak\":%.3f},",
+           anom.mode, anom.z, anom.learnProgress(), anom.mu(), anom.sigma(), (unsigned long)anom.p.nRides,
+           (unsigned long)anom.rideSeconds(), anom.p.durMean, anom.p.peakMean);
+  j += b;
   snprintf(b, sizeof(b), "\"api\":{\"enabled\":%s,\"online\":%s,\"status\":%d,\"pending\":%lu,\"sent\":%lu,\"lastOk\":%lu}}",
            API_URL[0] ? "true" : "false", apiOnline ? "true" : "false", apiLastStatus,
            (unsigned long)apiPending, (unsigned long)apiSentTotal, (unsigned long)apiLastOk);
@@ -1180,7 +1294,7 @@ static void handleLogCsv()
       size_t cnt = len / sizeof(LogRec);
       for (size_t k = 0; k < cnt; k++) {
         const LogRec &r = buf[k];
-        char ts[24], nums[64], al[24] = "";
+        char ts[24], nums[64], al[40] = "";
         fmtTime(r.t, ts, sizeof(ts));
         if (r.tempC100 != INT16_MIN) {
           snprintf(nums, sizeof(nums), "%.2f;%.3f;%.3f;%.3f;%.3f", r.tempC100 / 100.0f,
@@ -1383,10 +1497,15 @@ static void mqttProcess()
 
   MqttMsg m;
   while (mqttRxQueue && xQueueReceive(mqttRxQueue, &m, 0) == pdTRUE) {
+    float relearn = 0;
+    if (jsonGetNumber(m.payload, "relearn", relearn) && relearn > 0) {
+      resetAnomaly("MQTT");
+    }
     float t = settings.tempSet, v = settings.vibSet, li = settings.logInterval;
-    jsonGetNumber(m.payload, "tset", t);
-    jsonGetNumber(m.payload, "vset", v);
-    jsonGetNumber(m.payload, "logint", li);
+    bool any = jsonGetNumber(m.payload, "tset", t);
+    any |= jsonGetNumber(m.payload, "vset", v);
+    any |= jsonGetNumber(m.payload, "logint", li);
+    if (!any) continue;
     if (!applySettings(t, v, lroundf(li), "MQTT")) {
       Serial.printf("MQTT set komutu reddedildi: %s\n", m.payload);
       mqttPublishSettings();   // panel eski degere geri donsun
@@ -1404,6 +1523,12 @@ static void handleClear()
   logBytes = 0;
   LittleFS.remove(EVENTS_FILE);
   appendEvent("I02", "BILGI", NAN, NAN, "Tüm kayıtlar silindi");
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+static void handleAnomalyReset()
+{
+  resetAnomaly("web");
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
@@ -1636,6 +1761,8 @@ void setup()
   loadSettings();
   Serial.printf("Set degerleri: sicaklik %.1f C, titresim %.3f g, kayit araligi %u s\n",
                 settings.tempSet, settings.vibSet, settings.logInterval);
+  loadAnomaly();
+  lastAnomSaveMs = millis();
 
   fsOk = LittleFS.begin(true);
   if (fsOk) {
@@ -1665,6 +1792,7 @@ void setup()
   server.on("/events.csv", handleEventsCsv);
   server.on("/settings", HTTP_POST, handleSettings);
   server.on("/clear", HTTP_POST, handleClear);
+  server.on("/anomaly/reset", HTTP_POST, handleAnomalyReset);
   server.begin();
   Serial.println("Web sunucusu basladi");
 
