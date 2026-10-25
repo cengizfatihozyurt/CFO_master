@@ -7,6 +7,9 @@
  *                                        (sefer, darbe, uzun titresim, isinma) ile test
  *     GERCEK_VERI=<1 sn kayit dosyasi>  arka plan gurultusunun alinacagi dosya (zorunlu)
  *     TOHUM=<sayi>                      rastgele senaryo tohumu (varsayilan 42)
+ *   Her iki kullanimda:
+ *     OGRENME_DK=<dk>                   otomatik ogrenme suresi (varsayilan 10)
+ *     MANUEL=mu,sigma,sefer_s,tepe_g    ogrenme yerine elle girilen degerler
  *
  * cikti.csv: her saniye t,v,temp,mod,z,bayraklar (grafik/analiz icin)
  *
@@ -99,7 +102,8 @@ static std::vector<Sample> buildScenario(const std::vector<Sample> &real, std::v
   s.reserve(20000);
   s.push_back({t++, idle[pick(rng)], true, temp, -1});
   note("ogrenme (sadece durus)");
-  idleFor(ANOM_LEARN_S + 60);
+  const char *learnMin = getenv("OGRENME_DK");
+  idleFor((learnMin ? atoi(learnMin) * 60 : ANOM_LEARN_S) + 60);
 
   note("20 normal sefer (12-20 s, ~0.04 g)");
   std::uniform_int_distribution<int> rideLen(12, 20), gap(60, 180);
@@ -172,6 +176,17 @@ int main(int argc, char **argv)
   if (out) fprintf(out, "t,v,temp,mod,z,bayraklar,beklenen\n");
 
   AnomalyDetector det;
+  if (const char *m = getenv("OGRENME_DK")) det.startAuto((uint32_t)atoi(m) * 60);
+  if (const char *m = getenv("MANUEL")) {
+    float mu, sig, peak;
+    int rideMax;
+    if (sscanf(m, "%f,%f,%d,%f", &mu, &sig, &rideMax, &peak) != 4) {
+      fprintf(stderr, "MANUEL bicimi: mu,sigma,en_uzun_sefer_s,tepe_g\n");
+      return 1;
+    }
+    det.setManual(mu, sig, (uint32_t)rideMax, peak);
+    printf("Manuel mod: mu=%.4f sigma=%.4f sefer<=%d s tepe<=%.3f g\n", mu, sig, rideMax, peak);
+  }
   bool prev[AN_COUNT] = {};
   std::vector<Event> events;
   long learnedAt = -1;

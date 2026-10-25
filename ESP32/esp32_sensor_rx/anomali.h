@@ -6,11 +6,14 @@
  *
  * Girdi: STM32'den saniyede bir gelen toplam titresim RMS'i v (g) ve sicaklik.
  *
- * 1. Ogrenme
- *    Ilk ANOM_LEARN_S saniyede durus (bosta) titresiminin ortalamasi (mu) ve
- *    standart sapmasi (sigma) hesaplanir. Ogrenme bitince mu/sigma EWMA ile
- *    yavasca guncellenmeye devam eder; yalnizca durusta ve olcum normalken
- *    (z < ANOM_Z_UPDATE), boylece anomaliler "normal"i bozmaz.
+ * 1. Normal durum: iki yol
+ *    a) Otomatik: kullanicinin sectigi sure (varsayilan ANOM_LEARN_S) boyunca durus
+ *       (bosta) titresiminin ortalamasi (mu) ve standart sapmasi (sigma) hesaplanir.
+ *       Ogrenme bitince mu/sigma EWMA ile yavasca guncellenmeye devam eder; yalnizca
+ *       durusta ve olcum normalken (z < ANOM_Z_UPDATE), boylece anomaliler "normal"i bozmaz.
+ *    b) Manuel: mu, sigma, en uzun sefer suresi ve sefer tepe siniri kullanici
+ *       tarafindan girilir; sistem bunlari kendiliginden degistirmez (EWMA ve sefer
+ *       profili ogrenmesi kapali).
  *
  * 2. Durum (durus / hareket)
  *    z = (v - mu) / sigma
@@ -31,10 +34,13 @@
 #pragma once
 
 #include <math.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
-#define ANOM_LEARN_S        600       // ilk ogrenme suresi (s)
+#define ANOM_LEARN_S        600       // varsayilan otomatik ogrenme suresi (s)
+#define ANOM_LEARN_MIN_S    60        // kullanicinin secebilecegi en kisa / en uzun ogrenme
+#define ANOM_LEARN_MAX_S    14400
 #define ANOM_SIGMA_MIN      0.002f    // sigma alt siniri (g); sensor gurultusu cok dusukken asiri hassasiyeti onler
 #define ANOM_EWMA_ALPHA     (1.0f / 1800.0f)  // ogrenme sonrasi guncelleme (~30 dk zaman sabiti)
 #define ANOM_Z_UPDATE       3.0f      // bunun altindaki durus olcumleri normali gunceller
@@ -47,6 +53,7 @@
 #define ANOM_Z_SHOCK        30.0f
 #define ANOM_SHOCK_MIN_G    0.150f
 #define ANOM_SHOCK_RIDE_X   2.0f      // profil varsa darbe esigi >= 2 x sefer tepe siniri
+#define ANOM_SHOCK_RIDE_S   8         // darbeli ve bundan kisa "sefer" yalnizca darbedir
 #define ANOM_Z_IDLE         4.0f
 #define ANOM_IDLE_HOLD_S    10
 
@@ -60,7 +67,7 @@
 #define ANOM_TEMP_WIN_MIN   5
 #define ANOM_TEMP_RATE      0.5f      // C/dk
 
-#define ANOM_STATE_VERSION  1
+#define ANOM_STATE_VERSION  2
 
 enum AnomId { AN_SHOCK, AN_IDLE, AN_RIDE, AN_TEMP, AN_COUNT };
 
@@ -70,13 +77,19 @@ enum AnomMode : uint8_t { AM_LEARNING = 0, AM_IDLE = 1, AM_MOVING = 2 };
 struct AnomPersist {
   uint8_t  version;
   uint8_t  learned;
-  uint16_t reserved;
+  uint8_t  manual;      // 1: degerler kullanici tarafindan girildi
+  uint8_t  reserved;
   uint32_t nLearn;      // ogrenmede kullanilan olcum sayisi
   float    mu, var;     // durus titresimi (g, g^2)
   uint32_t nRides;      // profile giren normal sefer sayisi
   float    durMean, durM2;    // sefer suresi (s) - Welford
   float    peakMean, peakM2;  // sefer tepe titresimi (g) - Welford
+  // --- surum 2 ---
+  uint16_t learnS;      // otomatik ogrenme suresi (s)
+  uint16_t manRideMaxS; // manuel: en uzun normal sefer (s)
+  float    manPeakG;    // manuel: sefer tepe titresimi siniri (g)
 };
+#define ANOM_PERSIST_V1_SIZE  offsetof(AnomPersist, learnS)
 
 class AnomalyDetector {
 public:
@@ -91,10 +104,35 @@ public:
 
   AnomalyDetector() { reset(); }
 
+  // Otomatik ogrenmeyi bastan baslat (sure: saniye, sinirlar icine cekilir)
+  void startAuto(uint32_t learnSeconds)
+  {
+    if (learnSeconds < ANOM_LEARN_MIN_S) learnSeconds = ANOM_LEARN_MIN_S;
+    if (learnSeconds > ANOM_LEARN_MAX_S) learnSeconds = ANOM_LEARN_MAX_S;
+    reset();
+    p.learnS = (uint16_t)learnSeconds;
+  }
+
+  // Normal durum degerlerini elle gir; ogrenme yapilmaz
+  void setManual(float mu, float sigma, uint32_t rideMaxS, float ridePeakG)
+  {
+    uint16_t keepLearnS = p.learnS;
+    reset();
+    p.learnS = keepLearnS;
+    p.manual = 1;
+    p.learned = 1;
+    p.mu = mu;
+    p.var = sigma * sigma;
+    p.manRideMaxS = (uint16_t)rideMaxS;
+    p.manPeakG = ridePeakG;
+    mode = AM_IDLE;
+  }
+
   void reset()
   {
     memset(&p, 0, sizeof(p));
     p.version = ANOM_STATE_VERSION;
+    p.learnS = ANOM_LEARN_S;
     mode = AM_LEARNING;
     z = 0;
     memset(active, 0, sizeof(active));
@@ -107,16 +145,29 @@ public:
     tempHistN = 0;
   }
 
-  // Kayitli durumu yukle; surum uyusmazsa false (sifirdan ogrenilir)
-  bool load(const AnomPersist &saved)
+  // Kayitli durumu yukle (n: okunan bayt). Surum 1 kayitlari otomatik modla tasinir;
+  // taninmayan kayitta false doner (sifirdan ogrenilir).
+  bool load(const void *data, size_t n)
   {
-    if (saved.version != ANOM_STATE_VERSION) return false;
+    AnomPersist saved;
+    memset(&saved, 0, sizeof(saved));
+    memcpy(&saved, data, n < sizeof(saved) ? n : sizeof(saved));
+    if (saved.version == 1 && n == ANOM_PERSIST_V1_SIZE) {
+      saved.version = ANOM_STATE_VERSION;
+      saved.manual = 0;
+      saved.reserved = 0;
+      saved.learnS = ANOM_LEARN_S;
+    } else if (saved.version != ANOM_STATE_VERSION || n != sizeof(saved)) {
+      return false;
+    }
     reset();
     p = saved;
+    if (p.learnS < ANOM_LEARN_MIN_S) p.learnS = ANOM_LEARN_S;
     mode = p.learned ? AM_IDLE : AM_LEARNING;
     return true;
   }
 
+  bool  isManual() const { return p.manual != 0; }
   float mu() const    { return p.mu; }
   float sigma() const
   {
@@ -125,7 +176,12 @@ public:
     float s = sqrtf(var > 0 ? var : 0);
     return s < ANOM_SIGMA_MIN ? ANOM_SIGMA_MIN : s;
   }
-  float learnProgress() const { return p.learned ? 1.0f : (float)p.nLearn / ANOM_LEARN_S; }
+  float learnProgress() const { return p.learned ? 1.0f : (float)p.nLearn / p.learnS; }
+
+  // Gecerli sefer sinirlari (otomatik modda profil olusmadan once varsayilan)
+  bool  hasRideProfile() const { return p.manual || p.nRides >= ANOM_RIDE_LEARN; }
+  float rideDurLimitNow() const { return rideDurLimit(); }
+  float ridePeakLimitNow() const { return hasRideProfile() ? ridePeakLimit() : 0.0f; }
   uint32_t rideSeconds() const { return mode == AM_MOVING ? rideS : 0; }
 
   // Saniyede bir cagrilir
@@ -145,7 +201,7 @@ public:
     // normal seferin de belirgin ustunde olmali (anormal sefer A03'tur, darbe degil)
     float shockThr = p.mu + ANOM_Z_SHOCK * s;
     if (shockThr < ANOM_SHOCK_MIN_G) shockThr = ANOM_SHOCK_MIN_G;
-    if (p.nRides >= ANOM_RIDE_LEARN && shockThr < ANOM_SHOCK_RIDE_X * ridePeakLimit()) {
+    if (hasRideProfile() && shockThr < ANOM_SHOCK_RIDE_X * ridePeakLimit()) {
       shockThr = ANOM_SHOCK_RIDE_X * ridePeakLimit();
     }
     if (!active[AN_SHOCK] && v > shockThr) {
@@ -195,7 +251,7 @@ private:
     float d = v - p.mu;
     p.mu += d / p.nLearn;
     p.var += d * (v - p.mu);           // Welford M2
-    if (p.nLearn >= ANOM_LEARN_S) {
+    if (p.nLearn >= p.learnS) {
       p.var /= (p.nLearn - 1);         // M2 -> varyans
       p.learned = 1;
       mode = AM_IDLE;
@@ -204,8 +260,8 @@ private:
 
   void updateIdle(float v, float s)
   {
-    // Normali yavasca guncelle (sadece normal durus olcumleriyle)
-    if (z < ANOM_Z_UPDATE) {
+    // Normali yavasca guncelle (sadece normal durus olcumleriyle; manuel modda asla)
+    if (!p.manual && z < ANOM_Z_UPDATE) {
       float d = v - p.mu;
       p.mu += ANOM_EWMA_ALPHA * d;
       p.var = (1.0f - ANOM_EWMA_ALPHA) * (p.var + ANOM_EWMA_ALPHA * d * d);
@@ -259,6 +315,7 @@ private:
 
   float rideDurLimit() const
   {
+    if (p.manual) return (float)p.manRideMaxS;
     if (p.nRides < ANOM_RIDE_LEARN) return (float)ANOM_RIDE_MAX_S;
     float sd = sqrtf(p.durM2 / (p.nRides - 1));
     if (sd < ANOM_RIDE_DUR_MIN) sd = ANOM_RIDE_DUR_MIN;
@@ -268,6 +325,7 @@ private:
 
   float ridePeakLimit() const
   {
+    if (p.manual) return p.manPeakG;
     float sd = sqrtf(p.peakM2 / (p.nRides - 1));
     if (sd < ANOM_RIDE_PEAK_MIN) sd = ANOM_RIDE_PEAK_MIN;
     return p.peakMean + ANOM_Z_RIDE * sd;
@@ -302,20 +360,22 @@ private:
     rideOnCnt = 0;
     uint32_t dur = rideS - rideOffCnt;   // son durus saniyeleri sefere dahil degil
     float dur_f = (float)dur;
+    // Sefer sirasinda ya da hemen oncesinde darbe (A01) olduysa sefer profile girmez;
+    // girerse tepe sinirini sisirip sonraki anormal seferleri gizler (canli test, 2026-10-25).
+    // Kisa "sefer" yalnizca darbenin titresimidir: tepe kontrolu de yapilmaz (darbe zaten A01).
+    bool shockInRide = sinceShock <= rideS + ANOM_MOVE_ON_S;
+    bool shockOnly = shockInRide && dur <= ANOM_SHOCK_RIDE_S;
 
     if (active[AN_RIDE]) {
       set(AN_RIDE, false, dur_f, limit[AN_RIDE]);
-    } else if (dur >= ANOM_RIDE_MIN_S && p.nRides >= ANOM_RIDE_LEARN && ridePeak > ridePeakLimit()) {
+    } else if (!shockOnly && dur >= ANOM_RIDE_MIN_S && hasRideProfile() && ridePeak > ridePeakLimit()) {
       // A03: tepe titresimi profilin disinda (bir sonraki durus olcumunde biter)
       set(AN_RIDE, true, ridePeak, ridePeakLimit());
       rideFlagged = true;
     }
 
-    // Normal seferler profili gunceller. Sefer sirasinda ya da hemen oncesinde darbe
-    // (A01) olduysa bu bir sefer degil, darbenin titresimidir: profile girerse tepe
-    // sinirini sisirip sonraki anormal seferleri ve darbeleri gizler (canli test, 2026-10-25).
-    bool shockInRide = sinceShock <= rideS + ANOM_MOVE_ON_S;
-    if (dur >= ANOM_RIDE_MIN_S && !rideFlagged && !shockInRide) {
+    // Normal seferler profili gunceller (manuel modda profil sabittir)
+    if (!p.manual && dur >= ANOM_RIDE_MIN_S && !rideFlagged && !shockInRide) {
       p.nRides++;
       float d = dur_f - p.durMean;
       p.durMean += d / p.nRides;

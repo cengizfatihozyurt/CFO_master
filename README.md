@@ -102,13 +102,18 @@ https://stm32iot-api-fh72.onrender.com adresi tarayıcıda bir panel açar: canl
 | I01 | Set değerleri güncellendi |
 | I02 | Kayıtlar silindi |
 | I03 | Anomali modeli öğrenildi |
-| I04 | Anomali modeli sıfırlandı |
+| I04 | Otomatik öğrenme başlatıldı |
+| I05 | Anomali değerleri elle girildi |
 
 ## Anomali tespiti (uç birim)
 
 Sabit eşik alarmlarına (E01/E02) ek olarak ESP32, cihazın **normal davranışını öğrenip ondan sapmayı** yakalar. Kod: [`ESP32/esp32_sensor_rx/anomali.h`](ESP32/esp32_sensor_rx/anomali.h) (Arduino'dan bağımsız saf C++).
 
-1. **Öğrenme (ilk 10 dk):** duruş titreşiminin ortalaması (μ) ve standart sapması (σ) hesaplanır; temas/darbe gibi aşırı değerler dışarıda bırakılır. Sonra μ/σ yalnızca normal duruş ölçümleriyle yavaşça (EWMA, ~30 dk) güncellenir. Model NVS'de saklanır, elektrik kesilince kaybolmaz.
+1. **Normal durum (iki yol, ESP32 web panelindeki "Anomali Tespiti" kartından seçilir):**
+   - **Otomatik öğrenme:** süre kullanıcı tarafından seçilir (1–240 dk, varsayılan 10). Bu sürede duruş titreşiminin ortalaması (μ) ve standart sapması (σ) hesaplanır; temas/darbe gibi aşırı değerler dışarıda bırakılır. Sonra μ/σ yalnızca normal duruş ölçümleriyle yavaşça (EWMA, ~30 dk) güncellenir ve normal seferlerden sefer profili öğrenilir.
+   - **Manuel giriş:** duruş ortalaması μ, sapma σ, en uzun normal sefer (s) ve sefer tepe sınırı (g) elle girilir; sistem bunları kendiliğinden değiştirmez (EWMA ve sefer profili kapalı). "Mevcut değerleri doldur" düğmesi öğrenilmiş değerleri forma getirir. Ani darbe eşiği, sefer tepe sınırının 2 katıdır (en az 0,15 g).
+
+   Model NVS'de saklanır, elektrik kesilince kaybolmaz. MQTT `settings/set` ile de: `{"learnmin":N}` (otomatik, N dk), `{"relearn":1}` (mevcut süreyle), `{"man_mu":..,"man_sigma":..,"man_ridemax":..,"man_peak":..}` (manuel).
 2. **Durum ayrımı:** z = (v − μ) / σ. z > 6 (2 s) → **hareket** (sefer), z < 3 (3 s) → **duruş**. Asansör hareket ederken titreşim doğal olarak arttığı için her sefer alarm vermez. Normal seferlerin süresi ve tepe titreşimi ayrıca öğrenilir (sefer profili, 10 seferden sonra devreye girer).
 3. **Anomaliler:**
 
@@ -119,7 +124,7 @@ Sabit eşik alarmlarına (E01/E02) ek olarak ESP32, cihazın **normal davranış
 | A03 | Sefer süresi > ort + 4·std (en fazla 120 s) ya da sefer tepesi > ort + 4·std |
 | A04 | Son 5 dakikadaki sıcaklık artışı > 0,5 °C/dk |
 
-Durum ve skor MQTT telemetrisinde `ast` (0 öğreniyor, 1 duruş, 2 hareket) ve `az` (z-skoru) alanlarıyla yayınlanır; Grafana'da "Anomali skoru" ve "Anomali zaman çizelgesi" panellerinde görünür. ESP32 web panelindeki **Yeniden öğren** düğmesi (ya da MQTT `settings/set` ile `{"relearn":1}`) modeli sıfırlar; cihaz asansöre takıldıktan sonra bir kez yapılmalıdır.
+Durum ve skor MQTT telemetrisinde `ast` (0 öğreniyor, 1 duruş, 2 hareket) ve `az` (z-skoru) alanlarıyla yayınlanır; Grafana'da "Anomali skoru" ve "Anomali zaman çizelgesi" panellerinde görünür. Cihaz asansöre takıldıktan sonra bir kez **otomatik öğrenme** başlatılmalı ya da değerler **manuel** girilmelidir.
 
 ### Simülatör ile doğrulama
 
@@ -131,7 +136,15 @@ anomali_sim.exe kayit.csv [cikti.csv]                     # gerçek 1 s kayıtla
 set GERCEK_VERI=kayit.csv & anomali_sim.exe --senaryo     # gerçek gürültü + bilinen olaylar
 ```
 
-Senaryo; gerçek duruş gürültüsünden örneklenen arka plana 25 normal sefer, iki darbe (biri canlı testteki çift vuruş), duruşta 60 s hafif titreşim (+4,5σ), 200 s süren bir sefer, 3 kat titreşimli bir sefer ve 10 dk ısınma ekler. 30 farklı rastgele senaryonun hepsinde 6/6 olay yakalandı, yanlış alarm olmadı (2026-10-25). Gerçek 41 dakikalık masa üstü kaydında yalnızca bir gerçek darbe (0,265 g) A01 olarak işaretlendi.
+Senaryo; gerçek duruş gürültüsünden örneklenen arka plana 25 normal sefer, iki darbe (biri canlı testteki çift vuruş), duruşta 60 s hafif titreşim (+4,5σ), 200 s süren bir sefer, 3 kat titreşimli bir sefer ve 10 dk ısınma ekler. Sonuçlar (2026-10-25, her satır 30 farklı rastgele senaryo):
+
+| Mod | Sonuç |
+|---|---|
+| Otomatik, 3 / 10 / 30 dk öğrenme | 6/6 olay, 0 yanlış alarm |
+| Manuel (μ 0,0123, σ 0,002, sefer ≤ 40 s, tepe ≤ 0,10 g) | 6/6 olay, 0 yanlış alarm |
+| Manuel, tepe ≤ 0,08 g (sıkı) | 6/6 olay; 11 senaryoda güçlü anormal sefer A03'e ek olarak A01 de üretti (darbe eşiği = 2 × tepe sınırı) |
+
+Gerçek 41 dakikalık masa üstü kaydında, her iki modda da yalnızca bir gerçek darbe (0,265 g) A01 olarak işaretlendi.
 
 ### Canlı test (2026-10-25, kart masa üstünde)
 

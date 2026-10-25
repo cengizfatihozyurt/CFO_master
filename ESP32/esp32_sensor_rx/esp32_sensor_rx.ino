@@ -24,7 +24,8 @@
  *   E01 Sicaklik set degerinin uzerinde      E03 Sicaklik sensoru hatasi
  *   E02 Titresim set degerinin uzerinde      E04 STM32 veri iletisimi kesildi
  *   I01 Set degerleri guncellendi            I02 Kayitlar silindi
- *   I03 Anomali modeli ogrenildi             I04 Anomali modeli sifirlandi
+ *   I03 Anomali modeli ogrenildi             I04 Otomatik ogrenme baslatildi
+ *   I05 Anomali degerleri elle girildi
  *
  * Anomali kodlari (uc birimde tespit, ayrintilar anomali.h):
  *   A01 Ani darbe                            A03 Anormal sefer / uzun titresim
@@ -36,7 +37,8 @@
  *   /storage     depolama durumu  /log.csv   tum kayitlar (Excel uyumlu)
  *   /events.csv  olay kaydi       /settings  POST: tset, vset, logint
  *   /clear       POST: tum kayitlari sil
- *   /anomaly/reset  POST: anomali modelini sifirla, yeniden ogren
+ *   /anomaly/auto    POST minutes: otomatik ogrenmeyi N dk ile baslat (/anomaly/reset: mevcut sureyle)
+ *   /anomaly/manual  POST mu, sigma, ridemax, peak: normal durum degerlerini elle gir
  *
  * MQTT (bulut, Node-RED ile izleme). Tum konular MQTT_BASE onekiyle:
  *   <base>/status        "online" / "offline" (retained, LWT)
@@ -46,7 +48,8 @@
  *   <base>/event         her olay: {"ts","code","state","value","limit","desc"} (QoS1)
  *   <base>/settings      guncel set degerleri {"tset","vset","logint"} (retained)
  *   <base>/settings/set  ESP32 dinler: {"tset":..,"vset":..,"logint":..} (eksik alan eski degerde kalir)
- *                        {"relearn":1} anomali modelini sifirlar
+ *                        {"learnmin":N} N dk otomatik ogrenme, {"relearn":1} mevcut sureyle,
+ *                        {"man_mu","man_sigma","man_ridemax","man_peak"} manuel anomali degerleri
  *
  * Bulut API (Render, api/ klasoru):
  *   Her kayit araliginda yazilan olcumler ve olaylar HTTPS ile API'ye toplu gonderilir.
@@ -313,14 +316,15 @@ static void saveSettings()
 // Anomali modeli (ogrenilen normal) elektrik kesilince kaybolmasin
 static void loadAnomaly()
 {
-  AnomPersist saved;
+  uint8_t buf[sizeof(AnomPersist)];
   prefs.begin("anom", true);
-  size_t n = prefs.getBytes("st", &saved, sizeof(saved));
+  size_t len = prefs.getBytesLength("st");
+  size_t n = (len > 0 && len <= sizeof(buf)) ? prefs.getBytes("st", buf, len) : 0;
   prefs.end();
-  if (n == sizeof(saved) && anom.load(saved)) {
+  if (n && anom.load(buf, n)) {
     Serial.printf("Anomali modeli yuklendi: %s, durus mu=%.4f g sigma=%.4f g, %lu sefer\n",
-                  saved.learned ? "ogrenilmis" : "ogreniliyor", anom.mu(), anom.sigma(),
-                  (unsigned long)saved.nRides);
+                  anom.isManual() ? "manuel" : (anom.p.learned ? "ogrenilmis" : "ogreniliyor"),
+                  anom.mu(), anom.sigma(), (unsigned long)anom.p.nRides);
   } else {
     Serial.printf("Anomali modeli yok, %d sn ogrenme ile baslanacak\n", ANOM_LEARN_S);
   }
@@ -569,14 +573,39 @@ static void evaluateAnomalies()
   if (millis() - lastAnomSaveMs > ANOM_SAVE_MS) saveAnomaly();
 }
 
-static void resetAnomaly(const char *source)
+static void clearAnomalyAlarms()
 {
-  anom.reset();
   for (int i = 0; i < AN_COUNT; i++) setAlarm(AL_SHOCK + i, false, NAN, NAN);
+}
+
+// Otomatik ogrenme: verilen sure (dk) boyunca normal durum yeniden ogrenilir
+static bool startAutoLearning(long minutes, const char *source)
+{
+  if (minutes < ANOM_LEARN_MIN_S / 60 || minutes > ANOM_LEARN_MAX_S / 60) return false;
+  anom.startAuto((uint32_t)minutes * 60);
+  clearAnomalyAlarms();
   saveAnomaly();
   char desc[96];
-  snprintf(desc, sizeof(desc), "Anomali modeli sıfırlandı (%s): %d sn yeniden öğrenme", source, ANOM_LEARN_S);
+  snprintf(desc, sizeof(desc), "Otomatik öğrenme başlatıldı (%s): %ld dk", source, minutes);
   appendEvent("I04", "BILGI", NAN, NAN, desc);
+  return true;
+}
+
+// Manuel mod: normal durum degerleri kullanicidan, sistem kendiliginden degistirmez
+static bool applyManualAnomaly(float mu, float sigma, long rideMaxS, float peakG, const char *source)
+{
+  if (isnan(mu) || isnan(sigma) || isnan(peakG) || mu < 0 || mu > 2 || sigma < 0.0005f || sigma > 1 ||
+      rideMaxS < 5 || rideMaxS > 3600 || peakG <= mu || peakG > 16) {
+    return false;
+  }
+  anom.setManual(mu, sigma, (uint32_t)rideMaxS, peakG);
+  clearAnomalyAlarms();
+  saveAnomaly();
+  char desc[160];
+  snprintf(desc, sizeof(desc), "Anomali değerleri elle girildi (%s): duruş %.4f g / sigma %.4f g / sefer en fazla %ld s / tepe en fazla %.3f g",
+           source, mu, sigma, rideMaxS, peakG);
+  appendEvent("I05", "BILGI", mu, sigma, desc);
+  return true;
 }
 
 /* --------------------------- Veri kaydi ---------------------------------- */
@@ -811,6 +840,12 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
   #storage p { margin:4px 0; font-size:.9rem; }
   .bar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin:8px 0; }
   .bar div { height:100%; background:var(--acc); width:0; }
+  .pill { font-size:.8rem; padding:3px 10px; border-radius:999px; background:var(--bg); color:var(--muted); }
+  .modes { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; margin-top:12px; }
+  .mode { border:1px solid var(--line); border-radius:8px; padding:12px; }
+  .mode h3 { font-size:.95rem; margin:0 0 4px; }
+  .mode .sub { margin:0 0 10px; }
+  #anomMsg { font-size:.85rem; margin-top:8px; }
 </style>
 </head>
 <body>
@@ -837,15 +872,39 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <section class="card" id="anomCard">
   <div class="row">
     <h2>Anomali Tespiti (uç birim)</h2>
-    <button class="danger" id="relearnBtn">Yeniden öğren</button>
+    <span class="pill" id="anSource">-</span>
   </div>
   <section class="grid">
     <div><div class="label">Durum</div><div class="value" id="anMode">-</div></div>
     <div><div class="label">Anomali skoru (z)</div><div class="value" id="anZ">-</div><div class="sub">duruş titreşimine göre, 4 üstü dikkat</div></div>
-    <div><div class="label">Öğrenilen duruş titreşimi</div><div class="value"><span id="anMu">-</span> <span class="unit">g</span></div><div class="sub" id="anSigma"></div></div>
-    <div><div class="label">Öğrenilen seferler</div><div class="value" id="anRides">-</div><div class="sub" id="anRideInfo"></div></div>
+    <div><div class="label">Normal duruş titreşimi</div><div class="value"><span id="anMu">-</span> <span class="unit">g</span></div><div class="sub" id="anSigma"></div></div>
+    <div><div class="label">Sefer sınırları</div><div class="value" id="anRides">-</div><div class="sub" id="anRideInfo"></div></div>
   </section>
   <div class="bar" id="anLearnBar" style="display:none"><div id="anLearn"></div></div>
+
+  <div class="modes">
+    <div class="mode">
+      <h3>Otomatik öğrenme</h3>
+      <p class="sub">Asansör normal çalışırken başlatın. Seçilen süre boyunca normal durum öğrenilir; bu sürede karta dokunmayın.</p>
+      <form id="autoForm">
+        <label>Öğrenme süresi (dk)<input type="number" id="inLearn" step="1" min="1" max="240" required></label>
+        <button type="submit" class="primary">Otomatik öğrenmeyi başlat</button>
+      </form>
+    </div>
+    <div class="mode">
+      <h3>Manuel giriş</h3>
+      <p class="sub">Normal durum değerlerini siz girin. Sistem bu değerleri kendiliğinden değiştirmez. Ani darbe eşiği, sefer tepe sınırının 2 katıdır (en az 0,15 g); sınır çok düşük girilirse güçlü seferler darbe olarak da bildirilir.</p>
+      <form id="manForm">
+        <label>Duruş titreşimi ortalaması (g)<input type="number" id="inMu" step="0.0001" min="0" max="2" required></label>
+        <label>Duruş titreşimi sapması σ (g)<input type="number" id="inSig" step="0.0001" min="0.0005" max="1" required></label>
+        <label>En uzun normal sefer (s)<input type="number" id="inRide" step="1" min="5" max="3600" required></label>
+        <label>Sefer tepe titreşimi sınırı (g)<input type="number" id="inPeak" step="0.001" min="0.001" max="16" required></label>
+        <button type="button" id="fillBtn">Mevcut değerleri doldur</button>
+        <button type="submit" class="primary">Manuel değerleri uygula</button>
+      </form>
+    </div>
+  </div>
+  <div id="anomMsg"></div>
 </section>
 
 <section class="card">
@@ -906,6 +965,7 @@ const STATE = {BASLADI:'Başladı', BITTI:'Bitti', BILGI:'Bilgi'};
 
 let cfg = {tset:0, vset:0, logint:10};
 let rangeH = 1, chart = null, flagsArr = [], formDirty = false;
+let anom = null, anomDirty = false;
 
 async function getJSON(url, opt) {
   const r = await fetch(url, opt);
@@ -942,17 +1002,21 @@ async function updateLive() {
     $('cardV').classList.toggle('alarm', ['E02', 'A01', 'A02', 'A03'].some(c => codes.includes(c)));
 
     const an = d.anom;
+    anom = an;
     const learning = an.mode === 0;
+    $('anSource').textContent = an.manual ? 'Manuel değerler' : 'Otomatik (' + an.learnMin + ' dk öğrenme)';
     $('anMode').textContent = learning ? 'Öğreniyor %' + Math.floor(an.learn * 100)
       : an.mode === 2 ? 'Hareket (' + an.rideSec + ' s)' : 'Duruş';
     $('anZ').textContent = learning ? '-' : an.z.toFixed(1);
     $('anMu').textContent = an.mu.toFixed(4);
     $('anSigma').textContent = 'sigma ' + an.sigma.toFixed(4) + ' g';
-    $('anRides').textContent = an.rides;
-    $('anRideInfo').textContent = an.rides > 1 ? 'ort. ' + an.rideDur.toFixed(0) + ' s, tepe ' + an.ridePeak.toFixed(3) + ' g'
-      : '10 seferden sonra sefer kontrolü başlar';
+    $('anRides').textContent = '≤ ' + an.rideMax + ' s';
+    $('anRideInfo').textContent = an.manual ? 'tepe ≤ ' + an.peakLim.toFixed(3) + ' g (manuel)'
+      : an.rides >= 10 ? an.rides + ' sefer öğrenildi, tepe ≤ ' + an.peakLim.toFixed(3) + ' g'
+      : an.rides + '/10 sefer; tepe kontrolü 10 seferden sonra başlar';
     $('anLearnBar').style.display = learning ? '' : 'none';
     $('anLearn').style.width = (an.learn * 100).toFixed(1) + '%';
+    if (!anomDirty) $('inLearn').value = an.learnMin;
     $('anomCard').classList.toggle('alarm', codes.some(c => c[0] === 'A'));
     $('alarmCard').classList.toggle('alarm', d.alarms.length > 0);
     $('activeAlarms').innerHTML = d.alarms.length
@@ -1101,10 +1165,49 @@ $('setForm').addEventListener('submit', async ev => {
   }
 });
 
-$('relearnBtn').addEventListener('click', async () => {
-  if (!confirm('Anomali modeli silinip 10 dk boyunca yeniden öğrenilecek. Bu sürede asansör normal çalışmalı. Devam?')) return;
-  try { await getJSON('/anomaly/reset', {method:'POST'}); } catch (e) {}
-  updateLive(); loadEvents();
+// Hata durumunda sunucunun aciklamasini (err) dondurur
+async function postForm(url, body) {
+  const r = await fetch(url, {method:'POST', body});
+  let j = {};
+  try { j = await r.json(); } catch (e) {}
+  if (!r.ok || !j.ok) throw new Error(j.err || r.status);
+  return j;
+}
+
+function anomResult(ok, text) {
+  $('anomMsg').textContent = text;
+  $('anomMsg').className = ok ? '' : 'err';
+  if (ok) { anomDirty = false; updateLive(); loadEvents(); }
+}
+
+$('inLearn').addEventListener('input', () => { anomDirty = true; });
+
+$('autoForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const min = $('inLearn').value;
+  if (!confirm('Mevcut normal durum silinip ' + min + ' dk boyunca yeniden öğrenilecek. Bu sürede asansör normal çalışmalı ve karta dokunulmamalı. Devam?')) return;
+  try {
+    await postForm('/anomaly/auto', new URLSearchParams({minutes:min}));
+    anomResult(true, 'Otomatik öğrenme başladı: ' + min + ' dk.');
+  } catch (e) { anomResult(false, 'Başlatılamadı: ' + e.message); }
+});
+
+$('fillBtn').addEventListener('click', () => {
+  if (!anom) return;
+  $('inMu').value = anom.mu.toFixed(4);
+  $('inSig').value = anom.sigma.toFixed(4);
+  $('inRide').value = anom.rideMax;
+  $('inPeak').value = (anom.peakLim > 0 ? anom.peakLim : Math.max(anom.mu + 20 * anom.sigma, 0.05)).toFixed(3);
+});
+
+$('manForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const body = new URLSearchParams({mu:$('inMu').value, sigma:$('inSig').value, ridemax:$('inRide').value, peak:$('inPeak').value});
+  if (!confirm('Anomali tespiti girdiğiniz değerlerle çalışacak ve otomatik öğrenme kapanacak. Devam?')) return;
+  try {
+    await postForm('/anomaly/manual', body);
+    anomResult(true, 'Manuel değerler uygulandı.');
+  } catch (e) { anomResult(false, 'Uygulanamadı: ' + e.message); }
 });
 
 $('clearBtn').addEventListener('click', async () => {
@@ -1139,8 +1242,8 @@ static void handleData()
   bool stale = sensor.packetCount == 0 || age > TIMEOUT_MS;
   uint32_t now = nowEpoch();
   String j;
-  j.reserve(768);
-  char b[256];
+  j.reserve(1024);
+  char b[320];
 
   snprintf(b, sizeof(b),
            "{\"temperature\":%.2f,\"tempValid\":%s,\"vibX\":%.3f,\"vibY\":%.3f,\"vibZ\":%.3f,\"vibTotal\":%.3f,",
@@ -1168,9 +1271,11 @@ static void handleData()
   j += "],";
   snprintf(b, sizeof(b),
            "\"anom\":{\"mode\":%u,\"z\":%.2f,\"learn\":%.3f,\"mu\":%.4f,\"sigma\":%.4f,\"rides\":%lu,"
-           "\"rideSec\":%lu,\"rideDur\":%.1f,\"ridePeak\":%.3f},",
+           "\"rideSec\":%lu,\"rideDur\":%.1f,\"ridePeak\":%.3f,\"manual\":%s,\"learnMin\":%u,"
+           "\"rideMax\":%.0f,\"peakLim\":%.3f},",
            anom.mode, anom.z, anom.learnProgress(), anom.mu(), anom.sigma(), (unsigned long)anom.p.nRides,
-           (unsigned long)anom.rideSeconds(), anom.p.durMean, anom.p.peakMean);
+           (unsigned long)anom.rideSeconds(), anom.p.durMean, anom.p.peakMean, anom.isManual() ? "true" : "false",
+           anom.p.learnS / 60, anom.rideDurLimitNow(), anom.ridePeakLimitNow());
   j += b;
   snprintf(b, sizeof(b), "\"api\":{\"enabled\":%s,\"online\":%s,\"status\":%d,\"pending\":%lu,\"sent\":%lu,\"lastOk\":%lu}}",
            API_URL[0] ? "true" : "false", apiOnline ? "true" : "false", apiLastStatus,
@@ -1497,9 +1602,19 @@ static void mqttProcess()
 
   MqttMsg m;
   while (mqttRxQueue && xQueueReceive(mqttRxQueue, &m, 0) == pdTRUE) {
-    float relearn = 0;
-    if (jsonGetNumber(m.payload, "relearn", relearn) && relearn > 0) {
-      resetAnomaly("MQTT");
+    // Anomali modu: {"learnmin":N} otomatik N dk, {"relearn":1} mevcut sureyle,
+    // {"man_mu","man_sigma","man_ridemax","man_peak"} manuel degerler
+    float learnMin = 0, relearn = 0, mmu, msig, mride, mpeak;
+    if (jsonGetNumber(m.payload, "learnmin", learnMin)) {
+      if (!startAutoLearning(lroundf(learnMin), "MQTT")) Serial.printf("MQTT ogrenme suresi reddedildi: %s\n", m.payload);
+    } else if (jsonGetNumber(m.payload, "relearn", relearn) && relearn > 0) {
+      startAutoLearning(anom.p.learnS / 60, "MQTT");
+    }
+    if (jsonGetNumber(m.payload, "man_mu", mmu) && jsonGetNumber(m.payload, "man_sigma", msig) &&
+        jsonGetNumber(m.payload, "man_ridemax", mride) && jsonGetNumber(m.payload, "man_peak", mpeak)) {
+      if (!applyManualAnomaly(mmu, msig, lroundf(mride), mpeak, "MQTT")) {
+        Serial.printf("MQTT manuel anomali degerleri reddedildi: %s\n", m.payload);
+      }
     }
     float t = settings.tempSet, v = settings.vibSet, li = settings.logInterval;
     bool any = jsonGetNumber(m.payload, "tset", t);
@@ -1526,9 +1641,31 @@ static void handleClear()
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
-static void handleAnomalyReset()
+// POST /anomaly/auto  minutes=N   (N bos ise mevcut sure)
+static void handleAnomalyAuto()
 {
-  resetAnomaly("web");
+  long minutes = server.hasArg("minutes") ? server.arg("minutes").toInt() : anom.p.learnS / 60;
+  if (!startAutoLearning(minutes, "web")) {
+    char err[96];
+    snprintf(err, sizeof(err), "{\"ok\":false,\"err\":\"sure %d-%d dk olmali\"}", ANOM_LEARN_MIN_S / 60, ANOM_LEARN_MAX_S / 60);
+    server.send(400, "application/json", err);
+    return;
+  }
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+// POST /anomaly/manual  mu, sigma (g), ridemax (s), peak (g)
+static void handleAnomalyManual()
+{
+  if (!server.hasArg("mu") || !server.hasArg("sigma") || !server.hasArg("ridemax") || !server.hasArg("peak")) {
+    server.send(400, "application/json", "{\"ok\":false,\"err\":\"eksik parametre\"}");
+    return;
+  }
+  if (!applyManualAnomaly(server.arg("mu").toFloat(), server.arg("sigma").toFloat(), server.arg("ridemax").toInt(),
+                          server.arg("peak").toFloat(), "web")) {
+    server.send(400, "application/json", "{\"ok\":false,\"err\":\"gecersiz deger (tepe siniri ortalamadan buyuk olmali)\"}");
+    return;
+  }
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
@@ -1792,7 +1929,9 @@ void setup()
   server.on("/events.csv", handleEventsCsv);
   server.on("/settings", HTTP_POST, handleSettings);
   server.on("/clear", HTTP_POST, handleClear);
-  server.on("/anomaly/reset", HTTP_POST, handleAnomalyReset);
+  server.on("/anomaly/auto", HTTP_POST, handleAnomalyAuto);
+  server.on("/anomaly/reset", HTTP_POST, handleAnomalyAuto);   // eski ad, mevcut sureyle ogrenir
+  server.on("/anomaly/manual", HTTP_POST, handleAnomalyManual);
   server.begin();
   Serial.println("Web sunucusu basladi");
 
