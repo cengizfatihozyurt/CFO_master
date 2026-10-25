@@ -99,6 +99,7 @@ public:
     z = 0;
     memset(active, 0, sizeof(active));
     rideS = rideOnCnt = rideOffCnt = idleCnt = 0;
+    sinceShock = UINT32_MAX;
     ridePeak = 0;
     rideFlagged = false;
     minuteSum = 0;
@@ -152,6 +153,11 @@ public:
     } else if (active[AN_SHOCK] && v < shockThr * 0.7f) {
       set(AN_SHOCK, false, v, shockThr);
     }
+    if (active[AN_SHOCK]) {
+      sinceShock = 0;
+    } else if (sinceShock < UINT32_MAX) {
+      sinceShock++;
+    }
 
     if (mode == AM_IDLE) {
       updateIdle(v, s);
@@ -162,6 +168,7 @@ public:
 
 private:
   uint32_t rideS, rideOnCnt, rideOffCnt, idleCnt;
+  uint32_t sinceShock;   // son darbeden bu yana gecen olcum sayisi
   float    idleWin[ANOM_IDLE_HOLD_S];
   float    ridePeak;
   bool     rideFlagged;
@@ -304,8 +311,11 @@ private:
       rideFlagged = true;
     }
 
-    // Normal seferler profili gunceller
-    if (dur >= ANOM_RIDE_MIN_S && !rideFlagged) {
+    // Normal seferler profili gunceller. Sefer sirasinda ya da hemen oncesinde darbe
+    // (A01) olduysa bu bir sefer degil, darbenin titresimidir: profile girerse tepe
+    // sinirini sisirip sonraki anormal seferleri ve darbeleri gizler (canli test, 2026-10-25).
+    bool shockInRide = sinceShock <= rideS + ANOM_MOVE_ON_S;
+    if (dur >= ANOM_RIDE_MIN_S && !rideFlagged && !shockInRide) {
       p.nRides++;
       float d = dur_f - p.durMean;
       p.durMean += d / p.nRides;

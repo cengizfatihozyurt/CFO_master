@@ -110,4 +110,14 @@ anomali_sim.exe kayit.csv [cikti.csv]                     # gerçek 1 s kayıtla
 set GERCEK_VERI=kayit.csv & anomali_sim.exe --senaryo     # gerçek gürültü + bilinen olaylar
 ```
 
-Senaryo; gerçek duruş gürültüsünden örneklenen arka plana 25 normal sefer, bir darbe, duruşta 60 s hafif titreşim (+4,5σ), 200 s süren bir sefer, 3 kat titreşimli bir sefer ve 10 dk ısınma ekler. 30 farklı rastgele senaryonun hepsinde 5/5 olay yakalandı, yanlış alarm olmadı (2026-10-25). Gerçek 41 dakikalık masa üstü kaydında yalnızca bir gerçek darbe (0,265 g) A01 olarak işaretlendi.
+Senaryo; gerçek duruş gürültüsünden örneklenen arka plana 25 normal sefer, iki darbe (biri canlı testteki çift vuruş), duruşta 60 s hafif titreşim (+4,5σ), 200 s süren bir sefer, 3 kat titreşimli bir sefer ve 10 dk ısınma ekler. 30 farklı rastgele senaryonun hepsinde 6/6 olay yakalandı, yanlış alarm olmadı (2026-10-25). Gerçek 41 dakikalık masa üstü kaydında yalnızca bir gerçek darbe (0,265 g) A01 olarak işaretlendi.
+
+### Canlı test (2026-10-25, kart masa üstünde)
+
+| Yapılan | Sonuç |
+|---|---|
+| Karta sert vuruş | A01, 0,764 g (eşik 0,150 g), anında |
+| ~24 s ve ~11 s sürekli sallama | "Hareket" (sefer) olarak ayrıldı, alarm yok |
+| Duruş süreleri | z ≈ 0,5–1,5, A02 yanlış alarmı yok |
+
+Test bir hata da ortaya çıkardı: vuruş 3 s "hareket" sayılıp **sefer profiline girdi** ve öğrenilen sefer tepesini 0,32 g'ye şişirdi (gerçek sallamalar ~0,07 g). Bu, sonraki anormal seferleri ve darbeleri gizler; simülatörde yeniden üretildi (6 olaydan 2'si kaçırıldı). Düzeltme: sefer sırasında ya da hemen öncesinde A01 olduysa o sefer profile alınmaz.

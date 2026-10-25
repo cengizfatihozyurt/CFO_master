@@ -106,6 +106,15 @@ static std::vector<Sample> buildScenario(const std::vector<Sample> &real, std::v
   for (int i = 0; i < 20; i++) {
     ride(rideLen(rng), 0.040f, -1);
     idleFor(gap(rng));
+    if (i == 4) {
+      // Canli testte goruldu (2026-10-25): karta vurus 0.76/0.12/0.83 g uretti; 3 s
+      // "hareket" sayildi ve sefer profiline girip tepe sinirini sisirdi
+      note("BEKLENEN A01: cift vurus (canli testteki 0.76 / 0.12 / 0.83 g)");
+      push(0.764f, AN_SHOCK);
+      push(0.120f, AN_SHOCK);
+      push(0.832f, AN_SHOCK);
+      idleFor(gap(rng));
+    }
   }
 
   note("BEKLENEN A01: ani darbe (0.35 g, 1 s)");
