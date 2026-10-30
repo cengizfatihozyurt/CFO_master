@@ -6,9 +6,16 @@
 #define SECRET_WIFI_SSID   "WIFI_ADI"
 #define SECRET_WIFI_PASS   "WIFI_SIFRESI"
 
-// MQTT broker (Node-RED / Grafana icin)
-#define SECRET_MQTT_URI    "mqtt://192.168.1.100:1883"
-#define SECRET_MQTT_USER   "esp32"
+// Istege bagli ikinci Wi-Fi (ör. telefon hotspotu); baglanti yoksa sirayla denenir
+//#define SECRET_WIFI2_SSID  "HOTSPOT_ADI"
+//#define SECRET_WIFI2_PASS  "HOTSPOT_SIFRESI"
+
+// MQTT broker. Her agdan erisim icin bulut broker (HiveMQ Cloud, TLS):
+//   "mqtts://<cluster>.s1.eu.hivemq.cloud:8883"; bilgisayardaki Mosquitto koprusu veriyi
+//   buradan alir (ESP32/mosquitto/kopru_hivemq.conf.example).
+// Yalnizca ev aginda yerel broker: "mqtt://<bilgisayar IP>:1883"
+#define SECRET_MQTT_URI    "mqtts://<cluster>.s1.eu.hivemq.cloud:8883"
+#define SECRET_MQTT_USER   "MQTT_KULLANICI"
 #define SECRET_MQTT_PASS   "MQTT_SIFRESI"
 
 // Bulut API (Render). Bos birakilirsa API'ye gonderim kapali olur.

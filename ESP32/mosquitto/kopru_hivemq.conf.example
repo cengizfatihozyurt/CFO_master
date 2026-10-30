@@ -1,5 +1,6 @@
-# Bulut MQTT koprusu: yerel Mosquitto -> HiveMQ Cloud (TLS 8883)
-# ESP32'nin mesajlari buluta da iletilir; buluttan yalnizca set komutu alinir.
+# Bulut MQTT koprusu: HiveMQ Cloud (TLS 8883) <-> yerel Mosquitto
+# ESP32 dogrudan HiveMQ Cloud'a baglanir (her agdan); kopru cihaz mesajlarini buluttan
+# yerele alir (Node-RED / InfluxDB / Grafana icin), yereldeki set komutlarini buluta iletir.
 # Not: HiveMQ Cloud Serverless 31.12.2026'da kapanir; oncesinde EMQX'e tasinmali.
 connection hivemq_bulut
 address c6b99409cd8f46a382ca6eba365ebbfb.s1.eu.hivemq.cloud:8883
@@ -11,16 +12,16 @@ remote_username stm32iot-kopru
 remote_password HIVEMQ_SIFRESI
 try_private false
 notifications false
-cleansession true
+cleansession false
 keepalive_interval 60
 restart_timeout 10 60
 
-# Yerel -> bulut
-topic stm32iot-fa6dbb/cihaz01/telemetry out 0
-topic stm32iot-fa6dbb/cihaz01/event out 1
-topic stm32iot-fa6dbb/cihaz01/status out 1
-topic stm32iot-fa6dbb/cihaz01/info out 1
-topic stm32iot-fa6dbb/cihaz01/settings out 1
-topic stm32iot-fa6dbb/cihaz01/anomaly out 0
-# Bulut -> yerel (set degerleri buluttan da degistirilebilir)
-topic stm32iot-fa6dbb/cihaz01/settings/set in 1
+# Bulut -> yerel (cihaz mesajlari)
+topic stm32iot-fa6dbb/cihaz01/telemetry in 0
+topic stm32iot-fa6dbb/cihaz01/event in 1
+topic stm32iot-fa6dbb/cihaz01/status in 1
+topic stm32iot-fa6dbb/cihaz01/info in 1
+topic stm32iot-fa6dbb/cihaz01/settings in 1
+topic stm32iot-fa6dbb/cihaz01/anomaly in 0
+# Yerel -> bulut (Node-RED panelinden set ve anomali komutlari)
+topic stm32iot-fa6dbb/cihaz01/settings/set out 1

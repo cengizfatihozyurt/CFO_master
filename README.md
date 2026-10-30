@@ -5,8 +5,7 @@ STM32F103C8T6 ile sıcaklık (DS18B20) ve titreşim (ADXL345) ölçümü; ESP32 
 ```
 DS18B20 (PA1) ┐
               ├─ STM32F103 ──UART2──> ESP32 ──┬─ Web paneli + yerel kayıt (LittleFS)
-ADXL345 (SPI1)┘                               ├─ MQTT ──> Mosquitto ──> Node-RED ──> InfluxDB ──> Grafana
-                                              │             └─ köprü (TLS) ──> HiveMQ Cloud (bulut MQTT)
+ADXL345 (SPI1)┘                               ├─ MQTT (TLS) ──> HiveMQ Cloud ──köprü──> Mosquitto ──> Node-RED ──> InfluxDB ──> Grafana
                                               └─ HTTPS ──> Bulut API (Render) ──> Postgres
 ```
 
@@ -35,14 +34,18 @@ ADXL345 (SPI1)┘                               ├─ MQTT ──> Mosquitto �
 1. `ESP32/esp32_sensor_rx/secrets.example.h` dosyasını aynı klasöre `secrets.h` adıyla kopyala ve Wi-Fi, MQTT ve API bilgilerini doldur. (`secrets.h` GitHub'a gönderilmez.)
 2. Arduino IDE → kart: **DOIT ESP32 DEVKIT V1** → yükle.
 
-## Bulut MQTT (HiveMQ Cloud köprüsü)
+**Wi-Fi:** `secrets.h` içinde iki ağ tanımlanabilir (`SECRET_WIFI_SSID` ve isteğe bağlı `SECRET_WIFI2_SSID`, ör. telefon hotspotu). Bağlantı yoksa ESP32 bilinen ağları 20 s arayla sırayla dener. **ESP32 yalnızca 2,4 GHz ağlara bağlanır**; telefon hotspotunda 2,4 GHz / "Uyumluluğu en üst düzeye çıkar" seçilmelidir.
 
-Bilgisayardaki Mosquitto, ESP32'nin mesajlarını TLS (8883) üzerinden HiveMQ Cloud'a köprüler; ESP32'de değişiklik gerekmez.
+**Saat:** ESP32 saati yalnızca internetten (NTP) alır. Açılışta internet yoksa saat ayarlanana kadar ölçüm kaydı tutulmaz ve olaylar "saat yok" olarak yazılır (bilinen sınırlılık).
+
+## Bulut MQTT (HiveMQ Cloud)
+
+ESP32 doğrudan HiveMQ Cloud'a TLS (8883) ile bağlanır; böylece hangi ağda olursa olsun (ev, hotspot, asansör) veri buluta gider. Bilgisayardaki Mosquitto, kalıcı oturumlu (`cleansession false`) bir köprüyle cihaz mesajlarını buluttan alır; Node-RED, InfluxDB ve Grafana yerel broker'dan okumaya devam eder.
 
 | Yön | Konular |
 |---|---|
-| Yerel → bulut | `telemetry`, `event`, `status`, `info`, `settings`, `anomaly` |
-| Bulut → yerel | `settings/set` (set değerleri buluttan da değiştirilebilir) |
+| Bulut → yerel (köprü) | `telemetry`, `event`, `status`, `info`, `settings`, `anomaly` |
+| Yerel → bulut (köprü) | `settings/set` (Node-RED panelinden set ve anomali komutları) |
 
 Kurulum (Windows, yönetici):
 
@@ -51,7 +54,7 @@ Kurulum (Windows, yönetici):
 3. Let's Encrypt kök sertifikasını (ISRG Root X1, Windows sertifika deposunda var) `C:\ProgramData\STM32IoT\mosquitto\isrg_root_x1.pem` olarak dışa aktar.
 4. `mosquitto.conf` sonuna `include_dir C:\ProgramData\STM32IoT\mosquitto\conf.d` ekle ve Mosquitto servisini yeniden başlat.
 
-Doğrulama (2026-10-25): HiveMQ Cloud'a doğrudan abone olunarak telemetri/durum/bilgi mesajları görüldü; buluttan gönderilen `settings/set` komutu ESP32'de I01 olayı üretti.
+Doğrulama (2026-10-25, köprünün ilk hâli: yerel → bulut): HiveMQ Cloud'a doğrudan abone olunarak telemetri/durum/bilgi mesajları görüldü; buluttan gönderilen `settings/set` komutu ESP32'de I01 olayı üretti. 2026-10-30'da ESP32'nin evden farklı ağlarda da çalışabilmesi için yön tersine çevrildi (ESP32 → HiveMQ → köprü → yerel).
 
 **Dikkat:** HiveMQ Cloud Serverless (ücretsiz) 30.09.2026'dan beri yeni cluster kabul etmiyor ve **31.12.2026'da kapanıyor** (veriler 07.01.2027'de silinir). Öncesinde köprü ücretsiz bir başka bulut broker'a (ör. EMQX Cloud Serverless) taşınmalı; yalnızca `address`, kullanıcı ve sertifika değişir.
 

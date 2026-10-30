@@ -73,8 +73,17 @@
 #include <vector>
 #include <algorithm>
 
-const char *WIFI_SSID = SECRET_WIFI_SSID;
-const char *WIFI_PASS = SECRET_WIFI_PASS;
+// Bilinen Wi-Fi aglari: baglanti yoksa sirayla denenir (ev agi, telefon hotspotu ...)
+struct WifiNet { const char *ssid, *pass; };
+static const WifiNet WIFI_NETS[] = {
+  {SECRET_WIFI_SSID, SECRET_WIFI_PASS},
+#ifdef SECRET_WIFI2_SSID
+  {SECRET_WIFI2_SSID, SECRET_WIFI2_PASS},
+#endif
+};
+static const int WIFI_NET_COUNT = sizeof(WIFI_NETS) / sizeof(WIFI_NETS[0]);
+#define WIFI_SWITCH_MS  20000   // bu sure baglanamazsa siradaki ag denenir
+static int wifiIdx = 0;
 
 #define STM_RX_PIN   16
 #define STM_TX_PIN   17
@@ -112,7 +121,7 @@ const char *WIFI_PASS = SECRET_WIFI_PASS;
 #define MQTT_USER   SECRET_MQTT_USER
 #define MQTT_PASS   SECRET_MQTT_PASS
 #define MQTT_BASE   "stm32iot-fa6dbb/cihaz01"   // Node-RED akisindaki onekle ayni olmali
-#define FW_VERSION  "1.4"
+#define FW_VERSION  "1.5"
 
 #define API_URL         SECRET_API_URL
 #define API_KEY         SECRET_API_KEY
@@ -1893,19 +1902,30 @@ static void printCapacity()
                 (unsigned long)(logBytes / sizeof(LogRec)), (unsigned)logFiles.size());
 }
 
+static void beginWiFi(int idx)
+{
+  wifiIdx = idx;
+  WiFi.disconnect();
+  WiFi.begin(WIFI_NETS[idx].ssid, WIFI_NETS[idx].pass);
+  Serial.printf("Wi-Fi'ye baglaniliyor: %s\n", WIFI_NETS[idx].ssid);
+}
+
+// Acilista bilinen aglari sirayla dener (her biri en fazla 15 s)
 static void connectWiFi()
 {
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  Serial.printf("Wi-Fi'ye baglaniliyor: %s", WIFI_SSID);
-  uint32_t t0 = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 20000) {
-    delay(500);
-    Serial.print(".");
+  WiFi.persistent(false);   // ag bilgisi her baglantida NVS'ye yazilmasin
+  for (int i = 0; i < WIFI_NET_COUNT && WiFi.status() != WL_CONNECTED; i++) {
+    beginWiFi(i);
+    uint32_t t0 = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 15000) {
+      delay(500);
+      Serial.print(".");
+    }
+    Serial.println();
   }
-  Serial.println();
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.print("Baglandi! IP adresi: http://");
+    Serial.printf("Baglandi (%s)! IP adresi: http://", WIFI_NETS[wifiIdx].ssid);
     Serial.println(WiFi.localIP());
   } else {
     Serial.println("Wi-Fi baglanamadi, arka planda denemeye devam edilecek");
@@ -1969,14 +1989,22 @@ void loop()
 {
   server.handleClient();
 
-  // Wi-Fi koparsa yeniden baglan, IP degisirse yaz
-  static uint32_t lastWifiCheck = 0;
+  // Wi-Fi koparsa ayni aga yeniden baglanmayi dene; WIFI_SWITCH_MS boyunca olmazsa
+  // siradaki bilinen aga gec. IP degisirse yaz.
+  static uint32_t lastWifiCheck = 0, wifiDownSince = 0;
   if (millis() - lastWifiCheck > 5000) {
     lastWifiCheck = millis();
     if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("Wi-Fi koptu, yeniden baglaniliyor...");
-      WiFi.reconnect();
+      if (!wifiDownSince) {
+        wifiDownSince = millis();
+        Serial.println("Wi-Fi koptu, yeniden baglaniliyor...");
+        WiFi.reconnect();
+      } else if (millis() - wifiDownSince > WIFI_SWITCH_MS) {
+        wifiDownSince = millis();
+        beginWiFi((wifiIdx + 1) % WIFI_NET_COUNT);
+      }
     } else {
+      wifiDownSince = 0;
       static IPAddress lastIp;
       if (WiFi.localIP() != lastIp) {
         lastIp = WiFi.localIP();

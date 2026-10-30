@@ -18,7 +18,7 @@
  *
  * Ortam degiskenleri (yoksa yerel dosyalardan okunur):
  *   INFLUX_URL (http://localhost:8086), INFLUX_ORG (stm32iot), INFLUX_BUCKET (sensor), INFLUX_TOKEN
- *   ESP32_HOST (192.168.1.66), API_URL, RENDER_VIEW_KEY, API_DEVICE (cihaz01)
+ *   ESP32_HOST (yoksa MQTT info mesajindan), API_URL, RENDER_VIEW_KEY, API_DEVICE (cihaz01)
  */
 'use strict';
 
@@ -66,6 +66,22 @@ function influxConfig() {
     bucket: process.env.INFLUX_BUCKET || 'sensor',
     token,
   };
+}
+
+// ESP32'nin guncel IP adresi: ag degisince degisir. ESP32_HOST yoksa yerel broker'daki
+// retained "info" mesajindan okunur (mosquitto_sub, esp32 kullanicisi), olmazsa ev agi adresi.
+function esp32Host() {
+  if (process.env.ESP32_HOST) return process.env.ESP32_HOST;
+  try {
+    const notes = fs.readFileSync(path.join(ROOT, 'ESP32', 'node-red', 'mqtt_kullanicilar.txt'), 'utf8');
+    const pw = notes.match(/^\s*esp32\s*:\s*(\S+)/m)[1];
+    const out = require('child_process').execFileSync('C:\\Program Files\\Mosquitto\\mosquitto_sub.exe',
+      ['-h', 'localhost', '-u', 'esp32', '-P', pw, '-t', 'stm32iot-fa6dbb/cihaz01/info', '-C', '1', '-W', '5'],
+      {encoding: 'utf8', timeout: 8000});
+    return JSON.parse(out).ip;
+  } catch (e) {
+    return '192.168.1.66';
+  }
 }
 
 function viewKey() {
@@ -233,7 +249,7 @@ function writeOutputs(results) {
 /* ------------------------------------------------------------------ kesinti raporu */
 
 async function outageReport(cfg, exp) {
-  const host = process.env.ESP32_HOST || '192.168.1.66';
+  const host = esp32Host();
   const api = process.env.API_URL || 'https://stm32iot-api-fh72.onrender.com';
   const device = process.env.API_DEVICE || 'cihaz01';
   const from = Math.floor(exp.start), to = Math.ceil(exp.end || Date.now() / 1000);
