@@ -211,7 +211,7 @@
         "page": "ui_page",
         "width": "8",
         "height": "1",
-        "order": 7,
+        "order": 8,
         "showTitle": true,
         "className": "",
         "visible": "true",
@@ -1429,5 +1429,275 @@
                 "notify_info"
             ]
         ]
+    },
+    {
+        "id": "g_exp",
+        "type": "ui-group",
+        "name": "Deney Kaydı",
+        "page": "ui_page",
+        "width": "6",
+        "height": "1",
+        "order": 7,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "txt_exp_state",
+        "type": "ui-text",
+        "z": "tab_stm32iot",
+        "group": "g_exp",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "name": "Deney durumu",
+        "label": "Deney durumu",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#717171",
+        "wrapText": true,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 1200,
+        "y": 960,
+        "wires": []
+    },
+    {
+        "id": "form_exp",
+        "type": "ui-form",
+        "z": "tab_stm32iot",
+        "name": "Deney formu",
+        "group": "g_exp",
+        "label": "",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "options": [
+            {
+                "label": "Deney no",
+                "key": "deney_no",
+                "type": "number",
+                "required": true,
+                "rows": null
+            },
+            {
+                "label": "Deney türü",
+                "key": "tur",
+                "type": "dropdown",
+                "required": true,
+                "rows": null
+            },
+            {
+                "label": "Şiddet / seviye (ör. hafif, orta, sert)",
+                "key": "siddet",
+                "type": "text",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Uygulanan koşul / not",
+                "key": "kosul",
+                "type": "text",
+                "required": false,
+                "rows": null
+            }
+        ],
+        "formValue": {
+            "deney_no": "",
+            "tur": "",
+            "siddet": "",
+            "kosul": ""
+        },
+        "payload": "",
+        "submit": "Deneyi başlat",
+        "cancel": "Temizle",
+        "resetOnSubmit": false,
+        "topic": "topic",
+        "topicType": "msg",
+        "splitLayout": "",
+        "className": "",
+        "passthru": false,
+        "dropdownOptions": [
+            {
+                "dropdown": "tur",
+                "value": "A01",
+                "label": "A01 Ani darbe"
+            },
+            {
+                "dropdown": "tur",
+                "value": "A02",
+                "label": "A02 Duruşta anormal titreşim"
+            },
+            {
+                "dropdown": "tur",
+                "value": "A03",
+                "label": "A03 Anormal sefer"
+            },
+            {
+                "dropdown": "tur",
+                "value": "A04",
+                "label": "A04 Hızlı ısınma"
+            },
+            {
+                "dropdown": "tur",
+                "value": "NORMAL",
+                "label": "Uzun süreli normal çalışma"
+            },
+            {
+                "dropdown": "tur",
+                "value": "KESINTI",
+                "label": "İnternet kesintisi"
+            }
+        ],
+        "x": 900,
+        "y": 1000,
+        "wires": [
+            [
+                "f_exp"
+            ]
+        ]
+    },
+    {
+        "type": "ui-button",
+        "z": "tab_stm32iot",
+        "group": "g_exp",
+        "width": 0,
+        "height": 0,
+        "emulateClick": false,
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "",
+        "iconPosition": "left",
+        "payloadType": "str",
+        "topic": "topic",
+        "topicType": "msg",
+        "buttonColor": "",
+        "textColor": "",
+        "iconColor": "",
+        "enableClick": true,
+        "enablePointerdown": false,
+        "pointerdownPayload": "",
+        "pointerdownPayloadType": "str",
+        "enablePointerup": false,
+        "pointerupPayload": "",
+        "pointerupPayloadType": "str",
+        "id": "btn_exp_stim",
+        "name": "Uyaran uygulandı",
+        "label": "Uyaran uygulandı (şimdi)",
+        "order": 3,
+        "payload": "stimulus",
+        "x": 900,
+        "y": 1040,
+        "wires": [
+            [
+                "f_exp"
+            ]
+        ]
+    },
+    {
+        "type": "ui-button",
+        "z": "tab_stm32iot",
+        "group": "g_exp",
+        "width": 0,
+        "height": 0,
+        "emulateClick": false,
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "",
+        "iconPosition": "left",
+        "payloadType": "str",
+        "topic": "topic",
+        "topicType": "msg",
+        "buttonColor": "",
+        "textColor": "",
+        "iconColor": "",
+        "enableClick": true,
+        "enablePointerdown": false,
+        "pointerdownPayload": "",
+        "pointerdownPayloadType": "str",
+        "enablePointerup": false,
+        "pointerupPayload": "",
+        "pointerupPayloadType": "str",
+        "id": "btn_exp_end",
+        "name": "Deneyi bitir",
+        "label": "Deneyi bitir",
+        "order": 4,
+        "payload": "end",
+        "x": 900,
+        "y": 1080,
+        "wires": [
+            [
+                "f_exp"
+            ]
+        ]
+    },
+    {
+        "id": "file_exp",
+        "type": "file",
+        "z": "tab_stm32iot",
+        "name": "Deney CSV kaydı",
+        "filename": "filename",
+        "filenameType": "msg",
+        "appendNewline": true,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "utf8",
+        "x": 1420,
+        "y": 1040,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "f_exp",
+        "type": "function",
+        "z": "tab_stm32iot",
+        "name": "Deney işaretleri",
+        "outputs": 4,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [
+            {
+                "var": "fs",
+                "module": "fs"
+            },
+            {
+                "var": "os",
+                "module": "os"
+            },
+            {
+                "var": "path",
+                "module": "path"
+            }
+        ],
+        "x": 1160,
+        "y": 1040,
+        "wires": [
+            [
+                "txt_exp_state"
+            ],
+            [
+                "http_influx"
+            ],
+            [
+                "file_exp"
+            ],
+            [
+                "notify_info"
+            ]
+        ],
+        "func": "// Deney isaretleri: baslangic, uyaran (her deneme), bitis.\n// InfluxDB \"experiment\" olcumune ms hassasiyetle ve ~/stm32iot_kayit/deneyler.csv dosyasina yazilir.\n// Analiz: deney/analiz.js bu isaretleri ESP32 olaylariyla eslestirir.\nconst TYPES = {A01: 'A01 Ani darbe', A02: 'A02 Duruşta anormal titreşim', A03: 'A03 Anormal sefer',\n               A04: 'A04 Hızlı ısınma', NORMAL: 'Uzun süreli normal çalışma', KESINTI: 'İnternet kesintisi'};\nconst now = Date.now();\nconst tr = t => new Date(t).toLocaleString('tr-TR', {timeZone: 'Europe/Istanbul'});\nconst note = s => [null, null, null, {payload: s}];\nlet exp = flow.get('experiment') || null;\nlet phase;\n\nif (typeof msg.payload === 'object' && msg.payload !== null) {\n    if (exp) return note('Önce aktif deneyi bitirin (Deney ' + exp.no + ').');\n    const p = msg.payload;\n    const no = Math.round(Number(p.deney_no));\n    if (!(no >= 1)) return note('Deney no 1 veya büyük olmalı');\n    if (!TYPES[p.tur]) return note('Deney türünü seçin');\n    exp = {no, type: p.tur, severity: String(p.siddet || ''), cond: String(p.kosul || ''), start: now, trials: 0};\n    phase = 'start';\n} else if (msg.payload === 'stimulus') {\n    if (!exp) return note('Aktif deney yok: önce deneyi başlatın');\n    // Cift tiklama korumasi: 1,5 s icinde gelen ikinci isaret ayni uyarandir\n    if (exp.lastStim && now - exp.lastStim < 1500) return note('Yok sayıldı: önceki işaretten 1,5 sn geçmedi');\n    exp.lastStim = now;\n    exp.trials++;\n    phase = 'stimulus';\n} else if (msg.payload === 'end') {\n    if (!exp) return note('Aktif deney yok');\n    phase = 'end';\n} else {\n    return null;\n}\n\nconst tag = s => String(s).replace(/[ ,=]/g, '_');\nconst str = s => '\"' + String(s).replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"') + '\"';\nconst line = 'experiment,exp=' + exp.no + ',type=' + tag(exp.type) + ' phase=' + str(phase)\n    + ',trial=' + (phase === 'stimulus' ? exp.trials : 0) + 'i,severity=' + str(exp.severity)\n    + ',cond=' + str(exp.cond) + ' ' + now;\nconst influx = {\n    method: 'POST',\n    url: env.get('INFLUX_URL') + '/api/v2/write?org=' + encodeURIComponent(env.get('INFLUX_ORG'))\n        + '&bucket=' + encodeURIComponent(env.get('INFLUX_BUCKET')) + '&precision=ms',\n    headers: {'Authorization': 'Token ' + env.get('INFLUX_TOKEN'), 'Content-Type': 'text/plain; charset=utf-8'},\n    payload: line,\n};\n\nconst filename = path.join(os.homedir(), 'stm32iot_kayit', 'deneyler.csv');\nconst header = fs.existsSync(filename) ? '' : 'zaman_iso;zaman;deney_no;tur;asama;deneme;siddet;kosul\\n';\nconst csv = header + [new Date(now).toISOString(), tr(now), exp.no, exp.type, phase,\n    phase === 'stimulus' ? exp.trials : '', exp.severity.replace(/;/g, ','), exp.cond.replace(/;/g, ',')].join(';');\n\nlet info;\nif (phase === 'start') info = 'Deney ' + exp.no + ' başladı: ' + TYPES[exp.type];\nelse if (phase === 'stimulus') info = 'Deney ' + exp.no + ': uyaran ' + exp.trials + ' işaretlendi';\nelse info = 'Deney ' + exp.no + ' bitti (' + exp.trials + ' uyaran)';\n\nconst state = phase === 'end' ? 'Aktif deney yok (son: Deney ' + exp.no + ', ' + exp.trials + ' uyaran)'\n    : 'AKTİF: Deney ' + exp.no + ' · ' + TYPES[exp.type] + ' · ' + exp.trials + ' uyaran · başlangıç ' + tr(exp.start);\nflow.set('experiment', phase === 'end' ? null : exp);\nreturn [{payload: state}, influx, {payload: csv, filename}, {payload: info}];"
     }
 ]

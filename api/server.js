@@ -200,25 +200,26 @@ async function main() {
   app.get('/api/v1/telemetry', requireRead, async (req, res) => {
     const { from, to, limit } = rangeArgs(req.query);
     const device = req.query.device;
+    // received_at: kaydin sunucuya ulastigi an (kesinti deneyinde aktarim gecikmesi icin)
     const rows = validDevice(device)
       ? await store.query(
-        `SELECT device, ts, temp, vx, vy, vz, v, flags FROM telemetry
+        `SELECT device, ts, temp, vx, vy, vz, v, flags, received_at FROM telemetry
          WHERE device = $1 AND ts >= $2 AND ts <= $3 ORDER BY ts DESC LIMIT $4`, [device, from, to, limit])
       : await store.query(
-        `SELECT device, ts, temp, vx, vy, vz, v, flags FROM telemetry
+        `SELECT device, ts, temp, vx, vy, vz, v, flags, received_at FROM telemetry
          WHERE ts >= $1 AND ts <= $2 ORDER BY ts DESC LIMIT $3`, [from, to, limit]);
-    res.json(rows.map((r) => ({ ...r, ts: Number(r.ts) })));
+    res.json(rows.map((r) => ({ ...r, ts: Number(r.ts), received_at: Number(r.received_at) })));
   });
 
   app.get('/api/v1/events', requireRead, async (req, res) => {
     const { from, to, limit } = rangeArgs(req.query);
     const device = req.query.device;
-    const sel = 'SELECT device, ts, code, state, value, lim AS "limit", descr AS "desc" FROM events';
+    const sel = 'SELECT device, ts, code, state, value, lim AS "limit", descr AS "desc", received_at FROM events';
     const rows = validDevice(device)
       ? await store.query(`${sel} WHERE device = $1 AND ts >= $2 AND ts <= $3 ORDER BY ts DESC LIMIT $4`,
         [device, from, to, limit])
       : await store.query(`${sel} WHERE ts >= $1 AND ts <= $2 ORDER BY ts DESC LIMIT $3`, [from, to, limit]);
-    res.json(rows.map((r) => ({ ...r, ts: Number(r.ts) })));
+    res.json(rows.map((r) => ({ ...r, ts: Number(r.ts), received_at: Number(r.received_at) })));
   });
 
   // Grafik verisi: aralik en fazla `points` gruba bolunur. Sicaklik ve eksenler
