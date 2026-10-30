@@ -9,6 +9,8 @@ Bu protokol, geliştirilen sistemin anomali tespit başarımını tekrarlanabili
 | Node-RED paneli → **Deney Kaydı** | Deney başlatma, uyaran işaretleme, bitirme. İşaretler InfluxDB `experiment` ölçümüne (ms çözünürlük) ve `~/stm32iot_kayit/deneyler.csv` dosyasına yazılır. |
 | ESP32 | Anomali kararı (A01–A04); olaylar cihaz saatine göre (NTP) zaman damgalı. |
 | `node deney/analiz.js` | İşaretleri olaylarla eşleştirir; `deney/sonuclar/` altında deneme tablosu, yanlış alarm listesi ve özet ölçütler üretir. |
+| Node-RED paneli → **Deney Sonuçları** | "Deney sonuçlarını göster / güncelle" düğmesi analizi çalıştırır; tür bazında özet ve deneme kayıtları tablo olarak görünür. Her deney bitiminde kendiliğinden güncellenir. |
+| `deney/duzeltmeler.json` | Kalıcı veri düzeltmeleri (dışlanan oturumlar, uyaransız işaretler); hem panel hem komut satırı kullanır. |
 
 ## Her deneyden önce
 

@@ -211,7 +211,7 @@
         "page": "ui_page",
         "width": "8",
         "height": "1",
-        "order": 8,
+        "order": 9,
         "showTitle": true,
         "className": "",
         "visible": "true",
@@ -1686,7 +1686,8 @@
         "y": 1040,
         "wires": [
             [
-                "txt_exp_state"
+                "txt_exp_state",
+                "f_res_auto"
             ],
             [
                 "http_influx"
@@ -1739,6 +1740,235 @@
         "wires": [
             [
                 "f_exp"
+            ]
+        ]
+    },
+    {
+        "id": "g_res",
+        "type": "ui-group",
+        "name": "Deney Sonuçları",
+        "page": "ui_page",
+        "width": "12",
+        "height": "1",
+        "order": 8,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "type": "ui-button",
+        "z": "tab_stm32iot",
+        "group": "g_res",
+        "width": 0,
+        "height": 0,
+        "emulateClick": false,
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "",
+        "iconPosition": "left",
+        "payloadType": "str",
+        "topic": "topic",
+        "topicType": "msg",
+        "buttonColor": "",
+        "textColor": "",
+        "iconColor": "",
+        "enableClick": true,
+        "enablePointerdown": false,
+        "pointerdownPayload": "",
+        "pointerdownPayloadType": "str",
+        "enablePointerup": false,
+        "pointerupPayload": "",
+        "pointerupPayloadType": "str",
+        "id": "btn_res",
+        "name": "Deney sonuçlarını göster",
+        "label": "Deney sonuçlarını göster / güncelle",
+        "order": 1,
+        "payload": "refresh",
+        "x": 900,
+        "y": 1160,
+        "wires": [
+            [
+                "exec_res"
+            ]
+        ]
+    },
+    {
+        "id": "txt_res_info",
+        "type": "ui-text",
+        "z": "tab_stm32iot",
+        "group": "g_res",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "name": "Sonuç bilgisi",
+        "label": "Sonuçlar",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#717171",
+        "wrapText": true,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 1600,
+        "y": 1140,
+        "wires": []
+    },
+    {
+        "id": "tbl_res_summary",
+        "type": "ui-table",
+        "z": "tab_stm32iot",
+        "group": "g_res",
+        "name": "Özet (tür bazında)",
+        "label": "Özet (tür bazında)",
+        "order": 3,
+        "width": 12,
+        "height": 0,
+        "maxrows": 8,
+        "passthru": false,
+        "autocols": true,
+        "showSearch": false,
+        "deselect": true,
+        "selectionType": "none",
+        "columns": [],
+        "mobileBreakpoint": "sm",
+        "mobileBreakpointType": "defaults",
+        "action": "replace",
+        "className": "",
+        "x": 1600,
+        "y": 1180,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "tbl_res_trials",
+        "type": "ui-table",
+        "z": "tab_stm32iot",
+        "group": "g_res",
+        "name": "Deneme kayıtları",
+        "label": "Deneme kayıtları (en yeni üstte)",
+        "order": 4,
+        "width": 12,
+        "height": 0,
+        "maxrows": 15,
+        "passthru": false,
+        "autocols": true,
+        "showSearch": true,
+        "deselect": true,
+        "selectionType": "none",
+        "columns": [],
+        "mobileBreakpoint": "sm",
+        "mobileBreakpointType": "defaults",
+        "action": "replace",
+        "className": "",
+        "x": 1600,
+        "y": 1220,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "exec_res",
+        "type": "exec",
+        "z": "tab_stm32iot",
+        "name": "Analizi çalıştır (deney/analiz.js)",
+        "command": "\"C:\\Program Files\\nodejs\\node.exe\" \"C:\\Users\\Plutos\\Desktop\\Asansor_Anomali_Tespiti\\deney\\analiz.js\" --json",
+        "addpay": "",
+        "append": "",
+        "useSpawn": "false",
+        "timer": "120",
+        "winHide": true,
+        "oldrc": false,
+        "x": 1140,
+        "y": 1160,
+        "wires": [
+            [
+                "f_res"
+            ],
+            [],
+            [
+                "f_res"
+            ]
+        ]
+    },
+    {
+        "id": "f_res",
+        "type": "function",
+        "z": "tab_stm32iot",
+        "name": "Sonuçları tabloya çevir",
+        "outputs": 4,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1380,
+        "y": 1160,
+        "wires": [
+            [
+                "txt_res_info"
+            ],
+            [
+                "tbl_res_summary"
+            ],
+            [
+                "tbl_res_trials"
+            ],
+            [
+                "notify_info"
+            ]
+        ],
+        "func": "// exec: 1. cikis stdout (JSON), 3. cikis donus kodu ({code}). Hata ise bildir.\nif (typeof msg.payload === 'object' && msg.payload !== null && 'code' in msg.payload) {\n    if (msg.payload.code === 0) return null;\n    return [{payload: 'Analiz çalıştırılamadı (kod ' + msg.payload.code + ')'}, null, null, {payload: 'Deney analizi başarısız'}];\n}\nlet j;\ntry { j = JSON.parse(String(msg.payload)); } catch (e) {\n    return [{payload: 'Analiz çıktısı okunamadı'}, null, null, {payload: 'Deney analizi çıktısı okunamadı'}];\n}\nconst pct = s => s;\nconst summary = j.summary.map(s => ({\n    'Tür': s.tur, 'Deney': s.deney, 'Deneme': s.deneme, 'TP': s.tp, 'FN': s.fn, 'FP': s.fp,\n    'Precision': pct(s.precision), 'Recall': pct(s.recall), 'F1': pct(s.f1),\n    'Gecikme ortalama (s)': s.gecikme_ort_s, 'Gecikme medyan (s)': s.gecikme_medyan_s,\n    'Yanlış alarm / saat': s.yanlis_alarm_saat,\n}));\nconst trials = j.trials.map(t => ({\n    'Oturum': t.oturum, 'Tür': t.tur, 'Şiddet': t.siddet, 'Deneme': t.deneme,\n    'İşaret': t.isaret, 'ESP32 kararı': t.karar || '-', 'Sonuç': t.sonuc,\n    'Gecikme (s)': t.gecikme_s === null ? '-' : t.gecikme_s,\n    'Ölçülen (g)': t.deger_g === null || t.deger_g === undefined ? '-' : Number(t.deger_g).toFixed(3).replace('.', ','),\n}));\nconst fa = j.falseAlarms.length ? ' · Yanlış alarm: ' + j.falseAlarms.map(e => e.oturum + ' ' + e.kod + ' ' + e.zaman.slice(11)).join(', ') : '';\nconst notes = j.notes.length ? ' · Düzeltmeler: ' + j.notes.join(' ') : '';\nconst info = 'Güncelleme: ' + j.olusturma + ' · ' + j.trials.length + ' deneme' + fa + notes;\nreturn [{payload: info}, {payload: summary}, {payload: trials}, {payload: 'Deney sonuçları güncellendi'}];"
+    },
+    {
+        "id": "f_res_auto",
+        "type": "function",
+        "z": "tab_stm32iot",
+        "name": "Deney bitti mi?",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1400,
+        "y": 1100,
+        "wires": [
+            [
+                "delay_res"
+            ]
+        ],
+        "func": "return String(msg.payload).startsWith('Aktif deney yok') ? {payload: 'refresh'} : null;"
+    },
+    {
+        "id": "delay_res",
+        "type": "delay",
+        "z": "tab_stm32iot",
+        "name": "3 sn bekle",
+        "pauseType": "delay",
+        "timeout": "3",
+        "timeoutUnits": "seconds",
+        "rate": "1",
+        "nbRateUnits": "1",
+        "rateUnits": "second",
+        "randomFirst": "1",
+        "randomLast": "5",
+        "randomUnits": "seconds",
+        "drop": false,
+        "allowrate": false,
+        "outputs": 1,
+        "x": 1580,
+        "y": 1100,
+        "wires": [
+            [
+                "exec_res"
             ]
         ]
     }

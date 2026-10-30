@@ -1,6 +1,6 @@
 # Deney sonuçları
 
-Oluşturma: 2026-10-30 23:51:28 · Deney sayısı: 1
+Oluşturma: 2026-10-30 23:56:36 · Deney sayısı: 1
 
 | Tür | Deney | Deneme | TP | FN | FP | Precision | Recall | F1 | Gecikme ort. / medyan / en çok (s) | Yanlış alarm / saat |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |

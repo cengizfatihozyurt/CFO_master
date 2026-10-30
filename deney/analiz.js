@@ -228,14 +228,21 @@ function writeOutputs(results, notes = []) {
 
   const trialRows = ['deney_no;tarih;tur;siddet;kosul;deneme;beklenen_zaman;karar_zamani;dogru_tespit;gecikme_s;olcum_degeri'];
   const faRows = ['deney_no;tur;zaman;kod;deger'];
+  const trials = [], falseAlarms = [], summary = [];   // panel (--json) icin
   const byType = {};
   for (const r of results) {
     const {exp} = r;
     for (const t of r.trials) {
       trialRows.push([exp.label, iso(exp.start).slice(0, 10), exp.type, exp.severity, exp.cond, t.trial, iso(t.expected),
         t.decided ? iso(t.decided) : '', t.detected ? 'E' : 'H', t.delay ?? '', t.value === null ? '' : num(t.value, 3)].join(';'));
+      trials.push({oturum: exp.label, tur: exp.type, siddet: exp.severity, kosul: exp.cond, deneme: t.trial,
+        isaret: iso(t.expected), karar: t.decided ? iso(t.decided) : '', sonuc: t.detected ? 'Tespit' : 'Kaçırıldı',
+        gecikme_s: t.delay, deger_g: t.value});
     }
-    for (const e of r.falseAlarms) faRows.push([exp.label, exp.type, iso(e.t), e.code, num(e.value, 3)].join(';'));
+    for (const e of r.falseAlarms) {
+      faRows.push([exp.label, exp.type, iso(e.t), e.code, num(e.value, 3)].join(';'));
+      falseAlarms.push({oturum: exp.label, tur: exp.type, zaman: iso(e.t), kod: e.code, deger: e.value});
+    }
 
     const key = exp.type;
     byType[key] ||= {tp: 0, fn: 0, fp: 0, delays: [], hours: 0, exps: 0};
@@ -260,6 +267,10 @@ function writeOutputs(results, notes = []) {
     const d = b.delays;
     const avg = d.length ? d.reduce((x, y) => x + y, 0) / d.length : null;
     md.push(`| ${type} ${NAMES[type]} | ${b.exps} | ${b.tp + b.fn} | ${b.tp} | ${b.fn} | ${b.fp} | ${pct(type === 'NORMAL' ? null : m.precision)} | ${pct(type === 'NORMAL' ? null : m.recall)} | ${pct(type === 'NORMAL' ? null : m.f1)} | ${num(avg)} / ${num(median(d))} / ${d.length ? Math.max(...d) : '-'} | ${num(b.hours ? b.fp / b.hours : null, 2)} |`);
+    summary.push({tur: `${type} ${NAMES[type]}`, deney: b.exps, deneme: b.tp + b.fn, tp: b.tp, fn: b.fn, fp: b.fp,
+      precision: type === 'NORMAL' ? '-' : pct(m.precision), recall: type === 'NORMAL' ? '-' : pct(m.recall),
+      f1: type === 'NORMAL' ? '-' : pct(m.f1), gecikme_ort_s: num(avg), gecikme_medyan_s: num(median(d)),
+      yanlis_alarm_saat: num(b.hours ? b.fp / b.hours : null, 2)});
   }
   if (notes.length) md.push('', '**Veri düzeltmeleri:**', '', ...notes.map((n) => `- ${n}`));
   md.push('', 'TP: doğru tespit · FN: kaçırılan · FP: yanlış alarm (deney süresince eşleşmeyen anomali başlangıcı).',
@@ -267,7 +278,7 @@ function writeOutputs(results, notes = []) {
     'Gecikme: uyaran işaretinden ESP32 kararına (s, ESP32 olay zamanı 1 s çözünürlüklü; dakikalık ortalama kullanan A04 ve sefer sonunda karar veren A03 için doğal gecikme vardır).',
     `Arama pencereleri (s): ${Object.entries(WINDOW).map(([k, w]) => `${k} −${w.once}/+${w.sonra}`).join(', ')}.`);
   fs.writeFileSync(path.join(OUT_DIR, 'ozet.md'), md.join('\n') + '\n');
-  return md.join('\n');
+  return {md: md.join('\n'), summary, trials, falseAlarms};
 }
 
 /* ------------------------------------------------------------------ kesinti raporu */
@@ -335,16 +346,27 @@ async function main() {
   if (only) exps = exps.filter((e) => e.no === Number(only));
   exps = exps.filter((e) => e.start);
 
-  // Sonradan duzeltme (kayit degismez, ozet.md'de listelenir):
+  // Sonradan duzeltme (kayit degismez, ozet.md'de listelenir). Kalici duzeltmeler
+  // deney/duzeltmeler.json dosyasinda ({"haric": ["1-1"], "iptal": ["1-2:1"]}),
+  // tek seferlikler komut satirinda:
   //   --haric 1-1          bir oturumu tamamen dislar (or. deneme amacli calisma)
   //   --iptal 1-2:1,3:4    belirtilen oturumun belirtilen uyaran isaretini dislar (uyaransiz isaret)
+  const fix = {haric: [], iptal: []};
+  const fixFile = path.join(__dirname, 'duzeltmeler.json');
+  if (fs.existsSync(fixFile)) {
+    const j = JSON.parse(fs.readFileSync(fixFile, 'utf8'));
+    fix.haric.push(...(j.haric || []));
+    fix.iptal.push(...(j.iptal || []));
+  }
+  fix.haric.push(...(arg('--haric') || '').split(',').filter(Boolean));
+  fix.iptal.push(...(arg('--iptal') || '').split(',').filter(Boolean));
   const notes = [];
-  for (const label of (arg('--haric') || '').split(',').filter(Boolean)) {
+  for (const label of fix.haric) {
     const n = exps.length;
     exps = exps.filter((e) => e.label !== label);
     notes.push(n !== exps.length ? `Oturum ${label} analiz dışı bırakıldı.` : `Uyarı: --haric ${label} eşleşmedi.`);
   }
-  for (const item of (arg('--iptal') || '').split(',').filter(Boolean)) {
+  for (const item of fix.iptal) {
     const [label, trial] = item.split(':');
     const e = exps.find((x) => x.label === label);
     const before = e ? e.stimuli.length : 0;
@@ -353,9 +375,14 @@ async function main() {
       : `Uyarı: --iptal ${item} eşleşmedi.`);
   }
   for (const e of exps) if (e.canceled) notes.push(`Oturum ${e.label}: panelden ${e.canceled} uyaran işareti iptal edilmiş.`);
-  for (const n of notes) console.log(n);
+
+  // --json: Node-RED paneli icin yalnizca JSON (bilgi satirlari stderr'e)
+  const json = HAS('--json');
+  const log = json ? (...a) => console.error(...a) : (...a) => console.log(...a);
+  for (const n of notes) log(n);
 
   if (!exps.length) {
+    if (json) { console.log(JSON.stringify({olusturma: iso(Date.now() / 1000), notes, summary: [], trials: [], falseAlarms: []})); return; }
     console.log('Analiz edilecek deney yok (Node-RED "Deney Kaydı" panelinden deney başlatın; 900 ve üzeri test sayılır, --test ile dahil edilir).');
     return;
   }
@@ -372,10 +399,16 @@ async function main() {
   const results = exps.map((e) => analyse(e, events));
   for (const r of results) {
     const tp = r.trials.filter((t) => t.detected).length;
-    console.log(`Deney ${r.exp.label} (${r.exp.type}${r.exp.end ? '' : ', SÜRÜYOR'}): ${r.trials.length} uyaran, ${tp} tespit, ${r.trials.length - tp} kaçırma, ${r.falseAlarms.length} yanlış alarm`
+    log(`Deney ${r.exp.label} (${r.exp.type}${r.exp.end ? '' : ', SÜRÜYOR'}): ${r.trials.length} uyaran, ${tp} tespit, ${r.trials.length - tp} kaçırma, ${r.falseAlarms.length} yanlış alarm`
       + (r.falseAlarms.length ? ` [${r.falseAlarms.map((e) => e.code).join(' ')}]` : ''));
   }
-  console.log('\n' + writeOutputs(results, notes));
+  const out = writeOutputs(results, notes);
+  if (json) {
+    console.log(JSON.stringify({olusturma: iso(Date.now() / 1000), notes, summary: out.summary,
+      trials: out.trials.reverse(), falseAlarms: out.falseAlarms.reverse()}));   // panelde en yeni ustte
+    return;
+  }
+  console.log('\n' + out.md);
   console.log(`\nKaydedildi: ${path.relative(ROOT, OUT_DIR)}${path.sep}{denemeler.csv, yanlis_alarmlar.csv, ozet.md}`);
 }
 

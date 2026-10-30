@@ -1,0 +1,5 @@
+{
+  "aciklama": "Analizde kalici veri duzeltmeleri. haric: oturum tamamen dislanir; iptal: 'oturum:uyaran' uyaransiz isaret dislanir. Her duzeltme ozet.md'de listelenir.",
+  "haric": ["1-1"],
+  "iptal": ["1-2:1"]
+}
