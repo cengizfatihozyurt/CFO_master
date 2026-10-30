@@ -21,6 +21,9 @@ Bu protokol, geliştirilen sistemin anomali tespit başarımını tekrarlanabili
 
 - **Önce "Uyaran uygulandı (şimdi)" düğmesine bas, hemen ardından (1–2 s içinde) uyaranı uygula.** Böylece ölçülen gecikme (karar − işaret) negatif olmaz.
 - Her uyaran için **tek** işaret. 1,5 s içinde gelen ikinci tıklama yok sayılır (çift tıklama koruması).
+- İşaretlenip uygulanamayan (ya da yanlışlıkla işaretlenen) uyaran için hemen **"Son uyaranı iptal et"**. İptal kaydı silmez; iptal işareti ekler ve analiz o uyaranı dışarıda bırakır.
+- Her deney oturumuna **yeni bir numara** ver. Bir deney bitince form sonraki numarayı kendisi doldurur. Aynı numara yeniden başlatılırsa analiz bunları ayrı oturum sayar (1-1, 1-2) ve uyarı verir.
+- Deneme amaçlı (ısınma, alıştırma) çalışmalar için **900 ve üzeri** numara kullan.
 - Uyaranlar arasında en az bir önceki olayın bitmesini bekle (A01: ~5 s, A02: ~30 s, A03: sefer bitimi + 10 s, A04: sıcaklık normale dönene kadar).
 - Elle işaretleme ±2 s belirsizlik getirir. A01'de gecikme bu belirsizlik düzeyindedir; A02–A04'te yöntemin kendi gecikmesi (onlarca saniye) baskındır.
 
@@ -53,7 +56,10 @@ Normal sefer verisi masa üstünde yoktur; A03 için "normal sefer" sallamaları
 node deney/analiz.js                 tüm deneyler → deney/sonuclar/ozet.md, denemeler.csv, yanlis_alarmlar.csv
 node deney/analiz.js --deney 3       tek deney
 node deney/analiz.js --kesinti 6     kesinti raporu → deney/sonuclar/kesinti_6.md
+node deney/analiz.js --haric 1-1 --iptal 1-2:1    sonradan düzeltme (aşağıda)
 ```
+
+**Sonradan düzeltme:** Deney sırasında fark edilmeyen kayıt hataları kayıt değiştirilmeden, analiz sırasında düzeltilir ve her düzeltme `ozet.md` içinde "Veri düzeltmeleri" başlığıyla listelenir. `--haric <oturum>` bir oturumu tamamen dışlar (ör. deneme amaçlı çalışma), `--iptal <oturum>:<uyaran>` uyaransız bir işareti dışlar. Bir işaretin uyaransız olduğu, işaret çevresinde titreşim kaydı (InfluxDB `telemetry`) bulunmamasıyla gösterilmelidir.
 
 Eşleştirme: her uyaran işaretinden sonraki pencerede (A01 −5/+15 s, A02 −5/+120 s, A03 −5/+300 s, A04 −5/+600 s) beklenen koddaki ilk anomali başlangıcı **doğru tespit** (TP) sayılır; yoksa **kaçırılan** (FN). Deney süresince hiçbir uyaranla eşleşmeyen her anomali başlangıcı **yanlış alarm** (FP) sayılır.
 

@@ -132,17 +132,40 @@ async function loadMarkers(cfg) {
     |> filter(fn: (r) => r._measurement == "experiment")
     |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
     |> keep(columns: ["_time", "exp", "type", "phase", "trial", "severity", "cond"])`);
-  const exps = new Map();
+  // Her "start" yeni bir oturum acar. Ayni deney numarasi tekrar baslatildiysa oturumlar
+  // ayri tutulur (etiket 1-1, 1-2 ...) ve uyari verilir; "cancel" son uyarani iptal eder.
+  const sessions = [];
+  const open = new Map();
   for (const r of rows.sort((a, b) => Date.parse(a._time) - Date.parse(b._time))) {
     const no = Number(r.exp);
-    if (!exps.has(no)) exps.set(no, {no, type: r.type, severity: '', cond: '', start: null, end: null, stimuli: []});
-    const e = exps.get(no);
     const t = Date.parse(r._time) / 1000;
-    if (r.phase === 'start') { e.start = t; e.severity = r.severity || ''; e.cond = r.cond || ''; }
-    else if (r.phase === 'stimulus') e.stimuli.push({trial: Number(r.trial), t});
-    else if (r.phase === 'end') e.end = t;
+    if (r.phase === 'start') {
+      const e = {no, label: String(no), type: r.type, severity: r.severity || '', cond: r.cond || '',
+                 start: t, end: null, stimuli: [], canceled: 0};
+      sessions.push(e);
+      open.set(no, e);
+      continue;
+    }
+    const e = open.get(no);
+    if (!e) { console.warn(`Uyarı: deney ${no} için başlangıç işareti yok, ${r.phase} işareti atlandı`); continue; }
+    if (r.phase === 'stimulus') e.stimuli.push({trial: Number(r.trial), t});
+    else if (r.phase === 'cancel') {
+      const before = e.stimuli.length;
+      e.stimuli = e.stimuli.filter((s) => s.trial !== Number(r.trial));
+      e.canceled += before - e.stimuli.length;
+    } else if (r.phase === 'end') { e.end = t; open.delete(no); }
   }
-  return [...exps.values()];
+  const count = {};
+  for (const e of sessions) count[e.no] = (count[e.no] || 0) + 1;
+  const seen = {};
+  for (const e of sessions) {
+    if (count[e.no] > 1) {
+      seen[e.no] = (seen[e.no] || 0) + 1;
+      e.label = `${e.no}-${seen[e.no]}`;
+      if (seen[e.no] === 1) console.warn(`Uyarı: deney ${e.no} ${count[e.no]} kez başlatılmış; ayrı oturumlar olarak raporlanıyor (${e.no}-1 …).`);
+    }
+  }
+  return sessions;
 }
 
 async function loadEvents(cfg, from, to) {
@@ -199,7 +222,7 @@ const num = (x, d = 1) => (x === null || x === undefined || Number.isNaN(x) ? '-
 const iso = (t) => new Date(t * 1000).toLocaleString('sv-SE', {timeZone: 'Europe/Istanbul'});
 const median = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
-function writeOutputs(results) {
+function writeOutputs(results, notes = []) {
   fs.mkdirSync(OUT_DIR, {recursive: true});
   const bom = '﻿';
 
@@ -209,10 +232,10 @@ function writeOutputs(results) {
   for (const r of results) {
     const {exp} = r;
     for (const t of r.trials) {
-      trialRows.push([exp.no, iso(exp.start).slice(0, 10), exp.type, exp.severity, exp.cond, t.trial, iso(t.expected),
+      trialRows.push([exp.label, iso(exp.start).slice(0, 10), exp.type, exp.severity, exp.cond, t.trial, iso(t.expected),
         t.decided ? iso(t.decided) : '', t.detected ? 'E' : 'H', t.delay ?? '', t.value === null ? '' : num(t.value, 3)].join(';'));
     }
-    for (const e of r.falseAlarms) faRows.push([exp.no, exp.type, iso(e.t), e.code, num(e.value, 3)].join(';'));
+    for (const e of r.falseAlarms) faRows.push([exp.label, exp.type, iso(e.t), e.code, num(e.value, 3)].join(';'));
 
     const key = exp.type;
     byType[key] ||= {tp: 0, fn: 0, fp: 0, delays: [], hours: 0, exps: 0};
@@ -238,6 +261,7 @@ function writeOutputs(results) {
     const avg = d.length ? d.reduce((x, y) => x + y, 0) / d.length : null;
     md.push(`| ${type} ${NAMES[type]} | ${b.exps} | ${b.tp + b.fn} | ${b.tp} | ${b.fn} | ${b.fp} | ${pct(type === 'NORMAL' ? null : m.precision)} | ${pct(type === 'NORMAL' ? null : m.recall)} | ${pct(type === 'NORMAL' ? null : m.f1)} | ${num(avg)} / ${num(median(d))} / ${d.length ? Math.max(...d) : '-'} | ${num(b.hours ? b.fp / b.hours : null, 2)} |`);
   }
+  if (notes.length) md.push('', '**Veri düzeltmeleri:**', '', ...notes.map((n) => `- ${n}`));
   md.push('', 'TP: doğru tespit · FN: kaçırılan · FP: yanlış alarm (deney süresince eşleşmeyen anomali başlangıcı).',
     'Precision = TP / (TP + FP) · Recall = TP / (TP + FN) · F1 = 2·P·R / (P + R).',
     'Gecikme: uyaran işaretinden ESP32 kararına (s, ESP32 olay zamanı 1 s çözünürlüklü; dakikalık ortalama kullanan A04 ve sefer sonunda karar veren A03 için doğal gecikme vardır).',
@@ -281,7 +305,7 @@ async function outageReport(cfg, exp) {
 
   const r = analyse(exp, await loadEvents(cfg, from - 60, to + 700));
   const dur = to - from;
-  const md = [`# Kesinti deneyi ${exp.no}`, '',
+  const md = [`# Kesinti deneyi ${exp.label}`, '',
     `Kesinti: ${iso(from)} → ${iso(to)} (${(dur / 60).toFixed(1).replace('.', ',')} dk) · Koşul: ${exp.cond || '-'}`, '',
     '| Ölçüt | Değer |', '| --- | --- |',
     `| Uyaran (kontrollü darbe) sayısı | ${exp.stimuli.length} |`,
@@ -310,6 +334,27 @@ async function main() {
   const only = arg('--deney') || arg('--kesinti');
   if (only) exps = exps.filter((e) => e.no === Number(only));
   exps = exps.filter((e) => e.start);
+
+  // Sonradan duzeltme (kayit degismez, ozet.md'de listelenir):
+  //   --haric 1-1          bir oturumu tamamen dislar (or. deneme amacli calisma)
+  //   --iptal 1-2:1,3:4    belirtilen oturumun belirtilen uyaran isaretini dislar (uyaransiz isaret)
+  const notes = [];
+  for (const label of (arg('--haric') || '').split(',').filter(Boolean)) {
+    const n = exps.length;
+    exps = exps.filter((e) => e.label !== label);
+    notes.push(n !== exps.length ? `Oturum ${label} analiz dışı bırakıldı.` : `Uyarı: --haric ${label} eşleşmedi.`);
+  }
+  for (const item of (arg('--iptal') || '').split(',').filter(Boolean)) {
+    const [label, trial] = item.split(':');
+    const e = exps.find((x) => x.label === label);
+    const before = e ? e.stimuli.length : 0;
+    if (e) e.stimuli = e.stimuli.filter((s) => s.trial !== Number(trial));
+    notes.push(e && e.stimuli.length < before ? `Oturum ${label}, uyaran ${trial}: uyaransız işaret olarak analiz dışı bırakıldı.`
+      : `Uyarı: --iptal ${item} eşleşmedi.`);
+  }
+  for (const e of exps) if (e.canceled) notes.push(`Oturum ${e.label}: panelden ${e.canceled} uyaran işareti iptal edilmiş.`);
+  for (const n of notes) console.log(n);
+
   if (!exps.length) {
     console.log('Analiz edilecek deney yok (Node-RED "Deney Kaydı" panelinden deney başlatın; 900 ve üzeri test sayılır, --test ile dahil edilir).');
     return;
@@ -327,10 +372,10 @@ async function main() {
   const results = exps.map((e) => analyse(e, events));
   for (const r of results) {
     const tp = r.trials.filter((t) => t.detected).length;
-    console.log(`Deney ${r.exp.no} (${r.exp.type}${r.exp.end ? '' : ', SÜRÜYOR'}): ${r.trials.length} uyaran, ${tp} tespit, ${r.trials.length - tp} kaçırma, ${r.falseAlarms.length} yanlış alarm`
+    console.log(`Deney ${r.exp.label} (${r.exp.type}${r.exp.end ? '' : ', SÜRÜYOR'}): ${r.trials.length} uyaran, ${tp} tespit, ${r.trials.length - tp} kaçırma, ${r.falseAlarms.length} yanlış alarm`
       + (r.falseAlarms.length ? ` [${r.falseAlarms.map((e) => e.code).join(' ')}]` : ''));
   }
-  console.log('\n' + writeOutputs(results));
+  console.log('\n' + writeOutputs(results, notes));
   console.log(`\nKaydedildi: ${path.relative(ROOT, OUT_DIR)}${path.sep}{denemeler.csv, yanlis_alarmlar.csv, ozet.md}`);
 }
 
