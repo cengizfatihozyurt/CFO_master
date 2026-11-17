@@ -123,7 +123,7 @@ static int wifiIdx = 0;
 #define MQTT_USER   SECRET_MQTT_USER
 #define MQTT_PASS   SECRET_MQTT_PASS
 #define MQTT_BASE   "stm32iot-fa6dbb/cihaz01"   // Node-RED akisindaki onekle ayni olmali
-#define FW_VERSION  "1.7"
+#define FW_VERSION  "1.8"
 
 #define API_URL         SECRET_API_URL
 #define API_KEY         SECRET_API_KEY
@@ -239,14 +239,23 @@ static std::vector<LogFile> logFiles;   // baslangic zamanina gore sirali
 static uint32_t logBytes = 0;
 static Accum    acc = {};
 static uint32_t lastLogMs = 0;
-static bool     streaming = false;      // uzun HTTP yaniti sirasinda log yazma ertelenir
 static bool     fsOk = false;
 
-// Log/olay dosyalarina ana dongu ve API gorevi birlikte erisir
+// Log/olay dosyalarina ana dongu, web gorevi ve API gorevi birlikte erisir.
+// Kilit yalnizca dosya okuma/yazma suresince tutulur, ag uzerinden gonderim
+// sirasinda asla (yavas bir istemci ana donguyu bekletmesin).
 static SemaphoreHandle_t fsMutex = nullptr;
 struct FsLock {
   FsLock()  { if (fsMutex) xSemaphoreTakeRecursive(fsMutex, portMAX_DELAY); }
   ~FsLock() { if (fsMutex) xSemaphoreGiveRecursive(fsMutex); }
+};
+
+// Web sunucusu ayri gorevde calisir. Ayarlari/anomali modelini degistiren istekler
+// ile ana dongunun olcum isleme bolumu bu kilitle sirayla calisir.
+static SemaphoreHandle_t stateMutex = nullptr;
+struct StateLock {
+  StateLock()  { if (stateMutex) xSemaphoreTakeRecursive(stateMutex, portMAX_DELAY); }
+  ~StateLock() { if (stateMutex) xSemaphoreGiveRecursive(stateMutex); }
 };
 
 // API gonderim durumu (web sayfasinda gosterilir)
@@ -265,6 +274,7 @@ static volatile bool mqttAnnounce = false;   // baglaninca durum/ayar yayinla
 static QueueHandle_t mqttRxQueue = nullptr;
 
 static void pumpSerial();
+static void webTask(void *);
 
 /* --------------------------- Yardimcilar --------------------------------- */
 
@@ -374,6 +384,7 @@ static String mqttTopic(const char *leaf)
 struct PubMsg { char *topic; char *payload; int8_t qos; bool retain; };
 static QueueHandle_t mqttPubQueue = nullptr;
 static volatile uint32_t mqttPubDrops = 0;
+static uint32_t loopMaxMs = 0;   // en uzun ana dongu suresi (tani, /data)
 
 static void mqttPubTask(void *)
 {
@@ -589,6 +600,52 @@ static void appendEvent(const char *code, const char *state, float value, float 
   trimEvents();
 }
 
+// Olay dosyasini tek okumada RAM'e alir (kilit yalnizca okuma suresince tutulur;
+// eskiden satir satir readStringUntil ile okunuyordu, 64 KB'lik dosyada saniyeler surer)
+static String readEventsText()
+{
+  String s;
+  FsLock lock;
+  File f = LittleFS.open(EVENTS_FILE, FILE_READ);
+  if (!f) return s;
+  size_t n = f.size();
+  char *buf = (char *)malloc(n + 1);
+  if (buf) {
+    size_t r = f.read((uint8_t *)buf, n);
+    s.reserve(r);
+    s.concat(buf, r);
+    free(buf);
+  }
+  f.close();
+  return s;
+}
+
+// s icinde pos'tan baslayan satiri l'ye koyar (bos satirlar dahil)
+static bool nextLine(const String &s, int &pos, String &l)
+{
+  if (pos >= (int)s.length()) return false;
+  int e = s.indexOf('\n', pos);
+  if (e < 0) e = s.length();
+  l = s.substring(pos, e);
+  pos = e + 1;
+  l.trim();
+  return true;
+}
+
+static String logPath(uint32_t start);
+
+// Log dosyasindan pos baytindan itibaren en fazla maxRecs kayit okur
+static size_t readLogChunk(uint32_t start, size_t pos, LogRec *buf, size_t maxRecs)
+{
+  FsLock lock;
+  File f = LittleFS.open(logPath(start), FILE_READ);
+  if (!f) return 0;
+  size_t len = 0;
+  if (f.seek(pos)) len = f.read((uint8_t *)buf, maxRecs * sizeof(LogRec));
+  f.close();
+  return len / sizeof(LogRec);
+}
+
 static void setAlarm(int id, bool active, float value, float limit)
 {
   if (alarmActive[id] == active) return;
@@ -752,7 +809,6 @@ static void writeRecord(const LogRec &r)
 
 static void flushLog()
 {
-  if (streaming) return;
   if (millis() - lastLogMs < settings.logInterval * 1000UL) return;
   lastLogMs = millis();
 
@@ -1343,6 +1399,8 @@ static void handleData()
              sensor.vibPeak, (unsigned long)sensor.winN, (unsigned long)sensor.dtMinUs, (unsigned long)sensor.dtMaxUs);
     j += b;
   }
+  snprintf(b, sizeof(b), "\"loopMaxMs\":%lu,\"pubDrops\":%lu,", (unsigned long)loopMaxMs, (unsigned long)mqttPubDrops);
+  j += b;
   snprintf(b, sizeof(b),
            "\"now\":%lu,\"synced\":%s,\"tset\":%.2f,\"vset\":%.3f,\"logint\":%u,\"alarms\":[",
            (unsigned long)now, now ? "true" : "false",
@@ -1372,10 +1430,10 @@ static void handleData()
   server.send(200, "application/json", j);
 }
 
-static bool fileOverlaps(size_t i, uint32_t from, uint32_t to)
+static bool fileOverlaps(const std::vector<LogFile> &files, size_t i, uint32_t from, uint32_t to)
 {
-  uint32_t start = logFiles[i].start;
-  uint32_t end = (i + 1 < logFiles.size()) ? logFiles[i + 1].start - 1 : UINT32_MAX;
+  uint32_t start = files[i].start;
+  uint32_t end = (i + 1 < files.size()) ? files[i + 1].start - 1 : UINT32_MAX;
   return !(end < from || start > to);
 }
 
@@ -1401,17 +1459,20 @@ static void emitBucket(String &out, const Bucket &b, bool &first)
 // (sicaklik ve eksenler ortalama, toplam titresim en yuksek, alarm bitleri birlesik)
 static void handleHistory()
 {
-  FsLock lock;
   uint32_t from = server.hasArg("from") ? strtoul(server.arg("from").c_str(), nullptr, 10) : 0;
   uint32_t to   = server.hasArg("to")   ? strtoul(server.arg("to").c_str(), nullptr, 10)   : UINT32_MAX;
 
+  std::vector<LogFile> files;
+  {
+    FsLock lock;
+    files = logFiles;
+  }
   uint32_t est = 0;
-  for (size_t i = 0; i < logFiles.size(); i++) {
-    if (fileOverlaps(i, from, to)) est += logFiles[i].size / sizeof(LogRec);
+  for (size_t i = 0; i < files.size(); i++) {
+    if (fileOverlaps(files, i, from, to)) est += files[i].size / sizeof(LogRec);
   }
   uint32_t stride = (est > HISTORY_MAX_POINTS) ? (est + HISTORY_MAX_POINTS - 1) / HISTORY_MAX_POINTS : 1;
 
-  streaming = true;
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, "application/json", "");
 
@@ -1424,13 +1485,11 @@ static void handleHistory()
   Bucket b = {};
   LogRec buf[32];
 
-  for (size_t i = 0; i < logFiles.size(); i++) {
-    if (!fileOverlaps(i, from, to)) continue;
-    File f = LittleFS.open(logPath(logFiles[i].start), FILE_READ);
-    if (!f) continue;
-    size_t len;
-    while ((len = f.read((uint8_t *)buf, sizeof(buf))) >= sizeof(LogRec)) {
-      size_t cnt = len / sizeof(LogRec);
+  for (size_t i = 0; i < files.size(); i++) {
+    if (!fileOverlaps(files, i, from, to)) continue;
+    size_t pos = 0, cnt;
+    while ((cnt = readLogChunk(files[i].start, pos, buf, 32)) > 0) {
+      pos += cnt * sizeof(LogRec);
       for (size_t k = 0; k < cnt; k++) {
         const LogRec &r = buf[k];
         if (r.t < from || r.t > to) continue;
@@ -1452,23 +1511,23 @@ static void handleHistory()
       if (out.length() > 1500) {
         server.sendContent(out);
         out = "";
-        pumpSerial();
       }
     }
-    f.close();
   }
   if (b.n) emitBucket(out, b, first);
   out += "]}";
   server.sendContent(out);
   server.sendContent("");
-  streaming = false;
 }
 
 // Tum kayitlar: noktali virgul ayracli, ondalik virgullu (Turkce Excel dogrudan acar)
 static void handleLogCsv()
 {
-  FsLock lock;
-  streaming = true;
+  std::vector<LogFile> files;
+  {
+    FsLock lock;
+    files = logFiles;
+  }
   server.sendHeader("Content-Disposition", "attachment; filename=sensor_log.csv");
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, "text/csv; charset=utf-8", "");
@@ -1479,12 +1538,10 @@ static void handleLogCsv()
         "zaman;sicaklik_C;titresim_x_g;titresim_y_g;titresim_z_g;titresim_toplam_max_g;alarmlar\r\n";
   LogRec buf[32];
 
-  for (size_t i = 0; i < logFiles.size(); i++) {
-    File f = LittleFS.open(logPath(logFiles[i].start), FILE_READ);
-    if (!f) continue;
-    size_t len;
-    while ((len = f.read((uint8_t *)buf, sizeof(buf))) >= sizeof(LogRec)) {
-      size_t cnt = len / sizeof(LogRec);
+  for (size_t i = 0; i < files.size(); i++) {
+    size_t pos = 0, cnt;
+    while ((cnt = readLogChunk(files[i].start, pos, buf, 32)) > 0) {
+      pos += cnt * sizeof(LogRec);
       for (size_t k = 0; k < cnt; k++) {
         const LogRec &r = buf[k];
         char ts[24], nums[64], al[40] = "";
@@ -1513,14 +1570,11 @@ static void handleLogCsv()
       if (out.length() > 1500) {
         server.sendContent(out);
         out = "";
-        pumpSerial();
       }
     }
-    f.close();
   }
   server.sendContent(out);
   server.sendContent("");
-  streaming = false;
 }
 
 // Olay satirini alanlara ayir: epoch,kod,durum,deger,limit,aciklama
@@ -1544,18 +1598,16 @@ static String jsonNum(const String &s)
 
 static void handleEvents()
 {
-  FsLock lock;
   std::vector<String> lines;
-  File f = LittleFS.open(EVENTS_FILE, FILE_READ);
-  if (f) {
-    while (f.available()) {
-      String l = f.readStringUntil('\n');
-      l.trim();
+  {
+    String all = readEventsText();
+    int pos = 0;
+    String l;
+    while (nextLine(all, pos, l)) {
       if (!l.length()) continue;
       lines.push_back(l);
       if (lines.size() > EVENTS_MAX_SHOWN) lines.erase(lines.begin());
     }
-    f.close();
   }
 
   String j = "[";
@@ -1579,17 +1631,16 @@ static void handleEvents()
 
 static void handleEventsCsv()
 {
-  FsLock lock;
+  String all = readEventsText();
   server.sendHeader("Content-Disposition", "attachment; filename=olaylar.csv");
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, "text/csv; charset=utf-8", "");
   String out = "\xEF\xBB\xBF" "zaman;kod;durum;deger;limit;aciklama\r\n";
 
-  File f = LittleFS.open(EVENTS_FILE, FILE_READ);
-  if (f) {
-    while (f.available()) {
-      String l = f.readStringUntil('\n');
-      l.trim();
+  {
+    int pos = 0;
+    String l;
+    while (nextLine(all, pos, l)) {
       String fl[6];
       if (!splitEvent(l, fl)) continue;
       char ts[24];
@@ -1604,7 +1655,6 @@ static void handleEventsCsv()
         out = "";
       }
     }
-    f.close();
   }
   server.sendContent(out);
   server.sendContent("");
@@ -1647,6 +1697,7 @@ static bool applySettings(float t, float v, long li, const char *source)
 
 static void handleSettings()
 {
+  StateLock st;
   if (!server.hasArg("tset") || !server.hasArg("vset") || !server.hasArg("logint")) {
     server.send(400, "application/json", "{\"ok\":false,\"err\":\"eksik parametre\"}");
     return;
@@ -1728,6 +1779,7 @@ static void mqttProcess()
 
 static void handleClear()
 {
+  StateLock st;
   FsLock lock;
   for (const LogFile &lf : logFiles) {
     LittleFS.remove(logPath(lf.start));
@@ -1742,6 +1794,7 @@ static void handleClear()
 // POST /anomaly/auto  minutes=N   (N bos ise mevcut sure)
 static void handleAnomalyAuto()
 {
+  StateLock st;
   long minutes = server.hasArg("minutes") ? server.arg("minutes").toInt() : anom.p.learnS / 60;
   if (!startAutoLearning(minutes, "web")) {
     char err[96];
@@ -1755,6 +1808,7 @@ static void handleAnomalyAuto()
 // POST /anomaly/manual  mu, sigma (g), ridemax (s), peak (g)
 static void handleAnomalyManual()
 {
+  StateLock st;
   if (!server.hasArg("mu") || !server.hasArg("sigma") || !server.hasArg("ridemax") || !server.hasArg("peak")) {
     server.send(400, "application/json", "{\"ok\":false,\"err\":\"eksik parametre\"}");
     return;
@@ -1845,14 +1899,13 @@ static String telemetryJson(const LogRec *r, size_t n)
 // cursor'dan sonraki olaylari JSON'a cevir; gonderilen son olayin zamanini lastT'ye yaz
 static size_t collectEventsJson(uint32_t cursor, String &json, uint32_t &lastT)
 {
-  FsLock lock;
-  File f = LittleFS.open(EVENTS_FILE, FILE_READ);
-  if (!f) return 0;
+  String all = readEventsText();
+  if (!all.length()) return 0;
   json = "{\"device\":\"" API_DEVICE "\",\"events\":[";
   size_t n = 0;
-  while (f.available()) {
-    String l = f.readStringUntil('\n');
-    l.trim();
+  int pos = 0;
+  String l;
+  while (nextLine(all, pos, l)) {
     String fl[6];
     if (!splitEvent(l, fl)) continue;
     uint32_t t = strtoul(fl[0].c_str(), nullptr, 10);
@@ -1864,7 +1917,6 @@ static size_t collectEventsJson(uint32_t cursor, String &json, uint32_t &lastT)
     lastT = t;
     n++;
   }
-  f.close();
   json += "]}";
   return n;
 }
@@ -2000,6 +2052,7 @@ void setup()
 {
   Serial.begin(115200);
   fsMutex = xSemaphoreCreateRecursiveMutex();
+  stateMutex = xSemaphoreCreateRecursiveMutex();
   Serial2.setRxBufferSize(4096);
   Serial2.begin(STM_BAUD, SERIAL_8N1, STM_RX_PIN, STM_TX_PIN);
   Serial.println("ESP32 sensor alicisi basladi");
@@ -2042,6 +2095,10 @@ void setup()
   server.on("/anomaly/reset", HTTP_POST, handleAnomalyAuto);   // eski ad, mevcut sureyle ogrenir
   server.on("/anomaly/manual", HTTP_POST, handleAnomalyManual);
   server.begin();
+  // Web sunucusu ayri gorevde: yavas ya da uykuya gecen bir tarayici (or. telefon)
+  // gonderimi saniyelerce bekletebiliyor; ana dongude calistiginda STM32 satirlari
+  // birikiyor, tespitler gecikiyor/kayboluyordu (deney 3-4, 17-18.11.2026: 25 ve 90 s).
+  xTaskCreatePinnedToCore(webTask, "web", 8192, nullptr, 1, nullptr, 1);
   Serial.println("Web sunucusu basladi");
 
   mqttStart();
@@ -2049,9 +2106,40 @@ void setup()
   lastLogMs = millis();
 }
 
+// Dongu suresi tanisi: bir bolum LOOP_SLOW_MS'den uzun surerse seri porta yazilir,
+// en uzun dongu /data "loopMaxMs" ile okunur (STM32 satirlari 1 s'de bir gelir;
+// dongu takilirsa satirlar birikip gecikmeli islenir).
+#define LOOP_SLOW_MS 300
+
+static void webTask(void *)
+{
+  for (;;) {
+    server.handleClient();
+    vTaskDelay(pdMS_TO_TICKS(2));
+  }
+}
+static void loopSection(const char *name, uint32_t &t0)
+{
+  uint32_t now = millis(), d = now - t0;
+  if (d > LOOP_SLOW_MS) {
+    char ts[24];
+    fmtTime(nowEpoch(), ts, sizeof(ts));
+    Serial.printf("YAVAS [%s] %s: %lu ms (Wi-Fi %d, MQTT %d)\n", ts, name, (unsigned long)d,
+                  (int)WiFi.status(), (int)mqttConnected);
+  }
+  t0 = now;
+}
+
 void loop()
 {
-  server.handleClient();
+  static uint32_t loopStart = 0;
+  uint32_t t0 = millis();
+  if (loopStart) {
+    uint32_t total = t0 - loopStart;
+    if (total > loopMaxMs) loopMaxMs = total;
+  }
+  loopStart = t0;
+
 
   // Wi-Fi koparsa ayni aga yeniden baglanmayi dene; WIFI_SWITCH_MS boyunca olmazsa
   // siradaki bilinen aga gec. IP degisirse yaz.
@@ -2085,15 +2173,22 @@ void loop()
     Serial2.print("T:12.34,VX:0.001,VY:0.002,VZ:0.003,V:0.004\r\n");
   }
 #endif
+  loopSection("wifi", t0);
 
-  pumpSerial();
+  {
+    StateLock st;
+    pumpSerial();
+    loopSection("seri+anomali", t0);
 
-  if (sensor.packetCount > 0 && millis() - sensor.lastUpdateMs > TIMEOUT_MS) {
-    setAlarm(AL_LINK, true, NAN, NAN);
+    if (sensor.packetCount > 0 && millis() - sensor.lastUpdateMs > TIMEOUT_MS) {
+      setAlarm(AL_LINK, true, NAN, NAN);
+    }
+
+    flushLog();
+    loopSection("kayit", t0);
+    mqttProcess();
+    loopSection("mqtt", t0);
   }
-
-  flushLog();
-  mqttProcess();
 
   static uint32_t lastDiag = 0;
   if (sensor.packetCount == 0 && millis() - lastDiag > 2000) {
@@ -2101,4 +2196,5 @@ void loop()
     Serial.printf("Tani: Serial2 alinan bayt=%lu, bozuk satir=%lu\n",
                   (unsigned long)sensor.rxBytes, (unsigned long)sensor.badLines);
   }
+  vTaskDelay(1);   // ayni cekirdekteki web gorevine zaman birak
 }

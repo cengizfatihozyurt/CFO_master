@@ -1,6 +1,6 @@
 # Deney sonuçları
 
-Oluşturma: 2026-11-17 23:49:33 · Deney sayısı: 4
+Oluşturma: 2026-11-18 00:20:04 · Deney sayısı: 4
 
 | Tür | Deney | Deneme | TP | FN | FP | Precision | Recall | F1 | Gecikme ort. / medyan / en çok (s) | Yanlış alarm / saat |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -9,6 +9,7 @@ Oluşturma: 2026-11-17 23:49:33 · Deney sayısı: 4
 **Veri düzeltmeleri ve iletim notları:**
 
 - Oturum 1-1 analiz dışı bırakıldı.
+- Oturum 4 analiz dışı bırakıldı.
 - Oturum 1-2, uyaran 1: uyaransız işaret olarak analiz dışı bırakıldı.
 - Oturum 3: bitiş işareti verilmediği için bitiş 23:41:30 alındı (Bitir'e basilmadi; 10. denemeden sonraki tespitler masanin oynamasindan (kullanici dogruladi)).
 - Oturum 1-3, 23:29:31: yanlış alarm sayılmadı (Ilk isaretten once yapilan deneme vurusu (kullanici dogruladi, tepe 12,2 g)).
