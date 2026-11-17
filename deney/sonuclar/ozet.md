@@ -1,15 +1,17 @@
 # Deney sonuçları
 
-Oluşturma: 2026-10-30 23:56:36 · Deney sayısı: 1
+Oluşturma: 2026-11-17 23:34:57 · Deney sayısı: 2
 
 | Tür | Deney | Deneme | TP | FN | FP | Precision | Recall | F1 | Gecikme ort. / medyan / en çok (s) | Yanlış alarm / saat |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| A01 Ani darbe | 1 | 4 | 4 | 0 | 0 | 100,0 % | 100,0 % | 100,0 % | 2,5 / 2,0 / 5 | 0,00 |
+| A01 Ani darbe | 2 | 14 | 14 | 0 | 0 | 100,0 % | 100,0 % | 100,0 % | 1,8 / 1,5 / 5 | 0,00 |
 
-**Veri düzeltmeleri:**
+**Veri düzeltmeleri ve iletim notları:**
 
 - Oturum 1-1 analiz dışı bırakıldı.
 - Oturum 1-2, uyaran 1: uyaransız işaret olarak analiz dışı bırakıldı.
+- Oturum 1-3, 23:29:31: işaretlenmemiş deneme uyaranının tespiti (yanlış alarm değil) olarak dışlandı.
+- İletim: 14 anomali olayından 1 tanesi canlı MQTT/InfluxDB yolunda yok (diğer kaynaklardan tamamlandı): A01 2026-11-17 23:30:48
 
 TP: doğru tespit · FN: kaçırılan · FP: yanlış alarm (deney süresince eşleşmeyen anomali başlangıcı).
 Precision = TP / (TP + FP) · Recall = TP / (TP + FN) · F1 = 2·P·R / (P + R).

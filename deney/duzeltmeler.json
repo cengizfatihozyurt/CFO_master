@@ -1,5 +1,11 @@
 {
-  "aciklama": "Analizde kalici veri duzeltmeleri. haric: oturum tamamen dislanir; iptal: 'oturum:uyaran' uyaransiz isaret dislanir. Her duzeltme ozet.md'de listelenir.",
+  "aciklama": "Analizde kalici veri duzeltmeleri. haric: oturum tamamen dislanir; iptal: 'oturum:uyaran' uyaransiz isaret dislanir; yanlis_alarm_haric: 'oturum@YYYY-MM-DD HH:MM:SS' isaretlenmemis deneme uyaraninin tespiti. Her duzeltme ozet.md'de listelenir.",
   "haric": ["1-1"],
-  "iptal": ["1-2:1"]
+  "iptal": ["1-2:1"],
+  "yanlis_alarm_haric": ["1-3@2026-11-17 23:29:31"],
+  "gerekceler": {
+    "1-1": "Deneme amacli calisma (30.10.2026): isaretsiz vuruslar ve sallama",
+    "1-2:1": "Isaret cevresinde titresim kaydi yok (uyaransiz isaret)",
+    "1-3@2026-11-17 23:29:31": "Ilk isaretten once yapilan deneme vurusu (kullanici dogruladi, tepe 12,2 g)"
+  }
 }

@@ -168,14 +168,46 @@ async function loadMarkers(cfg) {
   return sessions;
 }
 
+// Olaylar uc kaynaktan birlestirilir; anomali karari ESP32'de verilir, kaynaklar yalnizca tasiyicidir:
+//   mqtt  : InfluxDB (ESP32 -> HiveMQ -> kopru -> Node-RED; canli yol, kayip verebilir)
+//   bulut : Render API (HTTPS, depola-ilet; cihaz kaydindan sirayla gonderilir)
+//   yerel : ESP32'nin kendi olay kaydi (/events, son 200 olay)
+// Her olayin hangi kaynaklarda bulundugu `src` icinde tutulur (iletim butunlugu raporu icin).
 async function loadEvents(cfg, from, to) {
+  const merged = new Map();
+  const add = (src, t, code, state, value) => {
+    const key = `${Math.round(t)}|${code}|${state}`;
+    if (!merged.has(key)) merged.set(key, {t: Math.round(t), code, state, value, src: new Set()});
+    merged.get(key).src.add(src);
+  };
+  const reached = {};
+
   const rows = await flux(cfg, `from(bucket: "${cfg.bucket}")
     |> range(start: ${Math.floor(from)}, stop: ${Math.ceil(to) + 1})
     |> filter(fn: (r) => r._measurement == "event")
     |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
     |> keep(columns: ["_time", "code", "state", "value", "limit"])`);
-  return rows.map((r) => ({t: Date.parse(r._time) / 1000, code: r.code, state: r.state, value: Number(r.value)}))
-    .sort((a, b) => a.t - b.t);
+  for (const r of rows) add('mqtt', Date.parse(r._time) / 1000, r.code, r.state, Number(r.value));
+  reached.mqtt = true;
+
+  try {
+    const api = process.env.API_URL || 'https://stm32iot-api-fh72.onrender.com';
+    const device = process.env.API_DEVICE || 'cihaz01';
+    const r = await fetch(`${api}/api/v1/events?device=${device}&from=${Math.floor(from)}&to=${Math.ceil(to)}&limit=10000`,
+      {headers: {'X-API-Key': viewKey()}, signal: AbortSignal.timeout(60000)});
+    for (const e of await r.json()) add('bulut', e.ts, e.code, e.state, e.value);
+    reached.bulut = true;
+  } catch (e) { reached.bulut = false; }
+
+  try {
+    const r = await fetch(`http://${esp32Host()}/events`, {signal: AbortSignal.timeout(10000)});
+    for (const e of await r.json()) if (e[0] >= from && e[0] <= to) add('yerel', e[0], e[1], e[2], e[3]);
+    reached.yerel = true;
+  } catch (e) { reached.yerel = false; }
+
+  const events = [...merged.values()].sort((a, b) => a.t - b.t);
+  events.reached = reached;
+  return events;
 }
 
 /* ------------------------------------------------------------------ eslestirme */
@@ -197,7 +229,7 @@ function analyse(exp, events) {
       if (hit) used.add(started.indexOf(hit));
       trials.push({
         trial: s.trial, expected: s.t, decided: hit ? hit.t : null,
-        detected: !!hit, delay: hit ? Math.round(hit.t - s.t) : null, value: hit ? hit.value : null,
+        detected: !!hit, delay: hit ? Math.round(hit.t - s.t) : null, value: hit ? hit.value : null, event: hit || null,
       });
     });
   }
@@ -272,7 +304,7 @@ function writeOutputs(results, notes = []) {
       f1: type === 'NORMAL' ? '-' : pct(m.f1), gecikme_ort_s: num(avg), gecikme_medyan_s: num(median(d)),
       yanlis_alarm_saat: num(b.hours ? b.fp / b.hours : null, 2)});
   }
-  if (notes.length) md.push('', '**Veri düzeltmeleri:**', '', ...notes.map((n) => `- ${n}`));
+  if (notes.length) md.push('', '**Veri düzeltmeleri ve iletim notları:**', '', ...notes.map((n) => `- ${n}`));
   md.push('', 'TP: doğru tespit · FN: kaçırılan · FP: yanlış alarm (deney süresince eşleşmeyen anomali başlangıcı).',
     'Precision = TP / (TP + FP) · Recall = TP / (TP + FN) · F1 = 2·P·R / (P + R).',
     'Gecikme: uyaran işaretinden ESP32 kararına (s, ESP32 olay zamanı 1 s çözünürlüklü; dakikalık ortalama kullanan A04 ve sefer sonunda karar veren A03 için doğal gecikme vardır).',
@@ -357,6 +389,7 @@ async function main() {
     const j = JSON.parse(fs.readFileSync(fixFile, 'utf8'));
     fix.haric.push(...(j.haric || []));
     fix.iptal.push(...(j.iptal || []));
+    fix.fp = j.yanlis_alarm_haric || [];   // ["1-3@2026-11-17 23:29:31"]: isaretlenmemis deneme uyarani
   }
   fix.haric.push(...(arg('--haric') || '').split(',').filter(Boolean));
   fix.iptal.push(...(arg('--iptal') || '').split(',').filter(Boolean));
@@ -397,6 +430,31 @@ async function main() {
   const to = Math.max(...exps.map((e) => e.end || Date.now() / 1000)) + 700;
   const events = await loadEvents(cfg, from, to);
   const results = exps.map((e) => analyse(e, events));
+
+  // Isaretlenmemis deneme uyaranindan dogan "yanlis alarm"lar (duzeltmeler.json, gerekce ile)
+  const noteStart = notes.length;
+  for (const item of fix.fp || []) {
+    const [label, when] = item.split('@');
+    const r = results.find((x) => x.exp.label === label);
+    const before = r ? r.falseAlarms.length : 0;
+    if (r) r.falseAlarms = r.falseAlarms.filter((e) => iso(e.t) !== when);
+    notes.push(r && r.falseAlarms.length < before
+      ? `Oturum ${label}, ${when.slice(11)}: işaretlenmemiş deneme uyaranının tespiti (yanlış alarm değil) olarak dışlandı.`
+      : `Uyarı: yanlis_alarm_haric ${item} eşleşmedi.`);
+  }
+
+  // Iletim butunlugu: deneylerde kullanilan anomali olaylari hangi yollarda eksik?
+  const used = results.flatMap((r) => [...r.trials.filter((t) => t.event).map((t) => t.event), ...r.falseAlarms]);
+  for (const [src, name] of [['mqtt', 'canlı MQTT/InfluxDB'], ['bulut', 'bulut API'], ['yerel', 'ESP32 yerel kaydı']]) {
+    if (!events.reached[src]) { notes.push(`Not: ${name} kaynağına ulaşılamadı; olaylar diğer kaynaklardan alındı.`); continue; }
+    const miss = used.filter((e) => !e.src.has(src));
+    // ESP32 yerel kaydi yalnizca son 200 olayi tutar; eski olaylarin orada olmamasi kayip degildir
+    if (miss.length && src !== 'yerel') {
+      notes.push(`İletim: ${used.length} anomali olayından ${miss.length} tanesi ${name} yolunda yok (diğer kaynaklardan tamamlandı): `
+        + miss.map((e) => `${e.code} ${iso(e.t)}`).join(', '));
+    }
+  }
+  for (const n of notes.slice(noteStart)) log(n);
   for (const r of results) {
     const tp = r.trials.filter((t) => t.detected).length;
     log(`Deney ${r.exp.label} (${r.exp.type}${r.exp.end ? '' : ', SÜRÜYOR'}): ${r.trials.length} uyaran, ${tp} tespit, ${r.trials.length - tp} kaçırma, ${r.falseAlarms.length} yanlış alarm`
