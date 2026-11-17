@@ -224,7 +224,10 @@ function analyse(exp, events) {
     const w = WINDOW[target];
     exp.stimuli.forEach((s, i) => {
       const next = exp.stimuli[i + 1];
-      const until = Math.min(s.t + w.sonra, next ? next.t - w.once : Infinity);
+      // Pencere bir sonraki isaretten hemen once biter. (Eskiden next - once idi: isaretler
+      // 6 s arayla verilince pencere 1 s'ye iniyor, 2-3 s sonra gelen dogru tespit
+      // komsu denemeye ya da yanlis alarma kayiyordu.)
+      const until = Math.min(s.t + w.sonra, next ? next.t - 1 : Infinity);
       const hit = started.find((e, k) => !used.has(k) && e.code === target && e.t >= s.t - w.once && e.t <= until);
       if (hit) used.add(started.indexOf(hit));
       trials.push({
