@@ -62,6 +62,11 @@ volatile uint8_t  g_ds18b20_ok = 0;        /* 1: son okuma basarili */
 volatile uint8_t  g_adxl345_ok = 0;        /* 1: sensor bulundu */
 volatile uint8_t  g_adxl345_devid = 0;     /* okunan DEVID (0xE5 olmali; 0x00/0xFF = baglanti sorunu) */
 volatile uint32_t g_tx_count = 0;          /* ESP32'ye gonderilen paket sayisi */
+/* Pencere (1 sn) olcum kalitesi: ornekleme duzeni ve tepe deger */
+volatile uint32_t g_win_n = 0;             /* pencerede gercekten okunan ornek sayisi */
+volatile uint32_t g_win_dt_min_us = 0;     /* iki okuma arasi en kisa sure (us) */
+volatile uint32_t g_win_dt_max_us = 0;     /* iki okuma arasi en uzun sure (us) */
+volatile float    g_vib_peak_g = 0.0f;     /* pencerede en buyuk mutlak sapma (eksenlerin en buyugu, g) */
 
 /* USER CODE END PV */
 
@@ -127,10 +132,14 @@ static char *append_fixed(char *p, float v, uint8_t dec)
   return p;
 }
 
-/* Format: T:25.06,VX:0.012,VY:0.010,VZ:0.015,V:0.022\r\n */
+/* Format: T:25.06,VX:0.012,VY:0.010,VZ:0.015,V:0.022,P:0.150,N:498,DTN:1990,DTX:2950\r\n
+ *   P   : pencerede en buyuk mutlak sapma (tepe, g)
+ *   N   : pencerede okunan ornek sayisi
+ *   DTN : iki okuma arasi en kisa sure (us), DTX: en uzun sure (us)
+ * Eski alici (ESP32 FW <= 1.5) bilmedigi alanlari yok sayar. */
 static void Send_To_ESP32(void)
 {
-  char buf[96];
+  char buf[128];
   char *p = buf;
 
   p = append_str(p, "T:");
@@ -150,6 +159,14 @@ static void Send_To_ESP32(void)
   p = append_fixed(p, g_vib_rms_z_g, 3);
   p = append_str(p, ",V:");
   p = append_fixed(p, g_vib_rms_g, 3);
+  p = append_str(p, ",P:");
+  p = append_fixed(p, g_vib_peak_g, 3);
+  p = append_str(p, ",N:");
+  p = append_fixed(p, (float)g_win_n, 0);
+  p = append_str(p, ",DTN:");
+  p = append_fixed(p, (float)g_win_dt_min_us, 0);
+  p = append_str(p, ",DTX:");
+  p = append_fixed(p, (float)g_win_dt_max_us, 0);
   p = append_str(p, "\r\n");
 
   HAL_UART_Transmit(&huart2, (uint8_t *)buf, (uint16_t)(p - buf), 50);
@@ -204,6 +221,13 @@ int main(void)
   int32_t  sum_x = 0, sum_y = 0, sum_z = 0;
   int64_t  sq_x = 0, sq_y = 0, sq_z = 0;
   uint32_t n_samples = 0;
+  int16_t  min_x = INT16_MAX, min_y = INT16_MAX, min_z = INT16_MAX;   /* tepe deger icin */
+  int16_t  max_x = INT16_MIN, max_y = INT16_MIN, max_z = INT16_MIN;
+
+  /* ornekleme duzeni: iki basarili okuma arasi sure (DWT, DS18B20_Init'te acildi) */
+  const uint32_t cyc_per_us = SystemCoreClock / 1000000U;
+  uint32_t last_cyc = 0, dt_min = UINT32_MAX, dt_max = 0;
+  uint8_t  have_last = 0;
 
   /* USER CODE END 2 */
 
@@ -231,6 +255,24 @@ int main(void)
         sum_y += y;  sq_y += (int32_t)y * y;
         sum_z += z;  sq_z += (int32_t)z * z;
         n_samples++;
+
+        if (x < min_x) min_x = x;
+        if (x > max_x) max_x = x;
+        if (y < min_y) min_y = y;
+        if (y > max_y) max_y = y;
+        if (z < min_z) min_z = z;
+        if (z > max_z) max_z = z;
+
+        /* DWT sayaci 64 MHz'te ~67 s'de bir tasar; isaretsiz fark kisa aralikta dogru kalir */
+        uint32_t cyc = DWT->CYCCNT;
+        if (have_last)
+        {
+          uint32_t dt = (cyc - last_cyc) / cyc_per_us;
+          if (dt < dt_min) dt_min = dt;
+          if (dt > dt_max) dt_max = dt;
+        }
+        last_cyc = cyc;
+        have_last = 1;
       }
     }
 
@@ -278,7 +320,20 @@ int main(void)
         g_vib_rms_y_g = sqrtf(vy) * ADXL345_LSB_TO_G;
         g_vib_rms_z_g = sqrtf(vz) * ADXL345_LSB_TO_G;
         g_vib_rms_g   = sqrtf(vx + vy + vz) * ADXL345_LSB_TO_G;
+
+        /* Tepe: pencere ortalamasina (DC/yercekimi) gore en buyuk mutlak sapma */
+        float px = fmaxf(max_x - mx, mx - min_x);
+        float py = fmaxf(max_y - my, my - min_y);
+        float pz = fmaxf(max_z - mz, mz - min_z);
+        g_vib_peak_g = fmaxf(px, fmaxf(py, pz)) * ADXL345_LSB_TO_G;
       }
+      g_win_n = n_samples;
+      g_win_dt_min_us = (dt_min == UINT32_MAX) ? 0U : dt_min;
+      g_win_dt_max_us = dt_max;
+      dt_min = UINT32_MAX;
+      dt_max = 0;
+      min_x = min_y = min_z = INT16_MAX;
+      max_x = max_y = max_z = INT16_MIN;
       sum_x = sum_y = sum_z = 0;
       sq_x = sq_y = sq_z = 0;
       n_samples = 0;

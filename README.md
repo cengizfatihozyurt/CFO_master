@@ -29,6 +29,18 @@ ADXL345 (SPI1)┘                               ├─ MQTT (TLS) ──> HiveMQ
 | PA4 / PA5 / PA6 / PA7 | ADXL345 CS / SCL / SDO / SDA (SPI1, mod 3, 1 MHz) |
 | PA2 / PA3 | USART2 TX / RX → ESP32 GPIO16 (RX2) / GPIO17 (TX2), 115200 |
 
+## Ölçüm kalitesi (STM32)
+
+STM32 her 1 s'lik pencerede RMS'e ek olarak şunları gönderir (UART satırında `P`, `N`, `DTN`, `DTX`; MQTT/InfluxDB'de `p`, `n`, `dtn`, `dtx`):
+
+| Alan | Anlam |
+|---|---|
+| `P` | Tepe ivme: pencere ortalamasına göre en büyük mutlak sapma (eksenlerin en büyüğü, g) |
+| `N` | Pencerede gerçekten okunan örnek sayısı |
+| `DTN` / `DTX` | Ardışık iki okuma arasındaki en kısa / en uzun süre (µs, DWT sayacı) |
+
+İlk ölçüm (2026-11-17, masa üstü, 3 dk): N = 492–495 (hedef 500), DTN ≈ 1,0–1,5 ms, DTX iki kümede ≈ 7,4 ms ve ≈ 8,3 ms. Okuma 1 ms'lik sistem sayacıyla zamanlandığı için aralıklar 1–3 ms arasında oynar; her saniye ESP32'ye UART gönderimi (~85 bayt, 115200 bit/s ≈ 7,4 ms, bloklayan) ve DS18B20 okuması ivme okumasını durdurur. RMS ve anomali yöntemi bu sürümde değiştirilmedi.
+
 ## ESP32 ilk kurulum
 
 1. `ESP32/esp32_sensor_rx/secrets.example.h` dosyasını aynı klasöre `secrets.h` adıyla kopyala ve Wi-Fi, MQTT ve API bilgilerini doldur. (`secrets.h` GitHub'a gönderilmez.)

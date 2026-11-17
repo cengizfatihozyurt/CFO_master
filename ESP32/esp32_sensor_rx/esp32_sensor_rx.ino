@@ -6,6 +6,8 @@
  *   T  : DS18B20 sicaklik (C), okunamazsa "ERR"
  *   VX/VY/VZ : eksen bazinda titresim RMS (g)
  *   V  : toplam titresim RMS (g)
+ *   STM32 yeni surumu ayrica: P (tepe, g), N (ornek sayisi), DTN/DTX (okuma araligi en kisa/en uzun, us)
+ *   -> telemetride p, n, dtn, dtx
  *
  * Baglanti (ESP32 Serial2 varsayilan pinleri):
  *   ESP32 GPIO16 (RX2) <- STM32 PA2 (USART2_TX)
@@ -121,7 +123,7 @@ static int wifiIdx = 0;
 #define MQTT_USER   SECRET_MQTT_USER
 #define MQTT_PASS   SECRET_MQTT_PASS
 #define MQTT_BASE   "stm32iot-fa6dbb/cihaz01"   // Node-RED akisindaki onekle ayni olmali
-#define FW_VERSION  "1.5"
+#define FW_VERSION  "1.6"
 
 #define API_URL         SECRET_API_URL
 #define API_KEY         SECRET_API_KEY
@@ -137,6 +139,10 @@ struct SensorData {
   float temperature;   // C
   bool  tempValid;
   float vibX, vibY, vibZ, vibTotal;  // g RMS
+  // Pencere olcum kalitesi (STM32 FW ile gelir; eski STM32 gondermez)
+  bool  hasQuality;
+  float vibPeak;                     // pencerede en buyuk mutlak sapma (g)
+  uint32_t winN, dtMinUs, dtMaxUs;   // ornek sayisi, okuma araligi en kisa / en uzun (us)
   uint32_t lastUpdateMs;
   uint32_t packetCount;
   uint32_t rxBytes;      // tani: Serial2'den gelen toplam bayt
@@ -224,6 +230,7 @@ static uint32_t alarmSince[AL_COUNT];
 
 #define ANOM_SAVE_MS  600000UL   // ogrenilen normal NVS'ye 10 dk'da bir yazilir
 #define ANOM_PUB_MS   30000UL    // anomali ayarlari MQTT'ye 30 sn'de bir (retained)
+#define STATUS_REFRESH_MS 60000UL  // "online" durumu dakikada bir yeniden yayinlanir
 
 static AnomalyDetector anom;
 static uint32_t lastAnomSaveMs = 0;
@@ -424,7 +431,7 @@ static uint8_t activeFlags();
 static void mqttPublishTelemetry()
 {
   if (!mqttConnected) return;
-  char temp[16], j[384], al[64] = "";
+  char temp[16], j[448], al[64] = "", q[96] = "";
   jsonFloat(temp, sizeof(temp), sensor.tempValid ? sensor.temperature : NAN, 2);
   uint8_t flags = activeFlags();
   for (int i = 0; i < AL_COUNT; i++) {
@@ -435,11 +442,15 @@ static void mqttPublishTelemetry()
       strlcat(al, "\"", sizeof(al));
     }
   }
+  if (sensor.hasQuality) {   // tepe ivme ve ornekleme duzeni (STM32 gonderiyorsa)
+    snprintf(q, sizeof(q), ",\"p\":%.3f,\"n\":%lu,\"dtn\":%lu,\"dtx\":%lu", sensor.vibPeak,
+             (unsigned long)sensor.winN, (unsigned long)sensor.dtMinUs, (unsigned long)sensor.dtMaxUs);
+  }
   snprintf(j, sizeof(j),
            "{\"ts\":%lu,\"temp\":%s,\"vx\":%.3f,\"vy\":%.3f,\"vz\":%.3f,\"v\":%.3f,"
-           "\"flags\":%u,\"alarms\":[%s],\"tset\":%.2f,\"vset\":%.3f,\"ast\":%u,\"az\":%.2f}",
+           "\"flags\":%u,\"alarms\":[%s],\"tset\":%.2f,\"vset\":%.3f,\"ast\":%u,\"az\":%.2f%s}",
            (unsigned long)nowEpoch(), temp, sensor.vibX, sensor.vibY, sensor.vibZ, sensor.vibTotal,
-           flags, al, settings.tempSet, settings.vibSet, anom.mode, anom.z);
+           flags, al, settings.tempSet, settings.vibSet, anom.mode, anom.z, q);
   mqttPublish("telemetry", j, 0, false);
 }
 
@@ -758,6 +769,15 @@ static void parseField(char *field)
     sensor.vibZ = atof(val);
   } else if (strcmp(key, "V") == 0) {
     sensor.vibTotal = atof(val);
+  } else if (strcmp(key, "P") == 0) {
+    sensor.vibPeak = atof(val);
+    sensor.hasQuality = true;
+  } else if (strcmp(key, "N") == 0) {
+    sensor.winN = strtoul(val, nullptr, 10);
+  } else if (strcmp(key, "DTN") == 0) {
+    sensor.dtMinUs = strtoul(val, nullptr, 10);
+  } else if (strcmp(key, "DTX") == 0) {
+    sensor.dtMaxUs = strtoul(val, nullptr, 10);
   }
 }
 
@@ -1070,7 +1090,9 @@ async function updateLive() {
           ? '  |  Bulut API: bağlı (bekleyen ' + d.api.pending + ')'
           : '  |  Bulut API: ULAŞILAMIYOR, ' + d.api.pending + ' kayıt cihazda bekliyor';
       }
-      st.textContent = 'Paket: ' + d.packetCount + '  |  kayıt aralığı: ' + d.logint + ' s' + api;
+      const q = d.quality ? '  |  örnek N=' + d.quality.n + ', aralık ' + (d.quality.dtMinUs / 1000).toFixed(1)
+        + '–' + (d.quality.dtMaxUs / 1000).toFixed(1) + ' ms, tepe ' + d.quality.peak.toFixed(3) + ' g' : '';
+      st.textContent = 'Paket: ' + d.packetCount + '  |  kayıt aralığı: ' + d.logint + ' s' + q + api;
       st.className = '';
     }
   } catch (e) {
@@ -1288,6 +1310,11 @@ static void handleData()
            (unsigned long)sensor.packetCount, (unsigned long)age, stale ? "true" : "false",
            (unsigned long)sensor.rxBytes, (unsigned long)sensor.badLines);
   j += b;
+  if (sensor.hasQuality) {
+    snprintf(b, sizeof(b), "\"quality\":{\"peak\":%.3f,\"n\":%lu,\"dtMinUs\":%lu,\"dtMaxUs\":%lu},",
+             sensor.vibPeak, (unsigned long)sensor.winN, (unsigned long)sensor.dtMinUs, (unsigned long)sensor.dtMaxUs);
+    j += b;
+  }
   snprintf(b, sizeof(b),
            "\"now\":%lu,\"synced\":%s,\"tset\":%.2f,\"vset\":%.3f,\"logint\":%u,\"alarms\":[",
            (unsigned long)now, now ? "true" : "false",
@@ -1625,8 +1652,17 @@ static bool jsonGetNumber(const char *json, const char *key, float &out)
 // Ana donguden: MQTT ile gelen set komutlarini uygula, baglaninca duyuru yap
 static void mqttProcess()
 {
+  // Durum mesajini duzenli yenile: bulut broker'a yeniden baglanildiginda eski oturumun
+  // "offline" vasiyeti (LWT) yeni "online"dan sonra yayinlanabiliyor (2026-11-17 gozlemi)
+  static uint32_t lastStatusMs = 0;
+  if (mqttConnected && !mqttAnnounce && millis() - lastStatusMs > STATUS_REFRESH_MS) {
+    lastStatusMs = millis();
+    mqttPublish("status", "online", 1, true);
+  }
+
   if (mqttAnnounce && mqttConnected) {
     mqttAnnounce = false;
+    lastStatusMs = millis();
     mqttPublish("status", "online", 1, true);
     mqttPublishInfo();
     mqttPublishSettings();
