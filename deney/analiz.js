@@ -393,6 +393,8 @@ async function main() {
     fix.haric.push(...(j.haric || []));
     fix.iptal.push(...(j.iptal || []));
     fix.fp = j.yanlis_alarm_haric || [];   // ["1-3@2026-11-17 23:29:31"]: isaretlenmemis deneme uyarani
+    fix.end = j.bitis || {};                // {"3": "2026-11-17 23:41:30"}: bitir'e basilmamis oturumun bitisi
+    fix.why = j.gerekceler || {};
   }
   fix.haric.push(...(arg('--haric') || '').split(',').filter(Boolean));
   fix.iptal.push(...(arg('--iptal') || '').split(',').filter(Boolean));
@@ -409,6 +411,12 @@ async function main() {
     if (e) e.stimuli = e.stimuli.filter((s) => s.trial !== Number(trial));
     notes.push(e && e.stimuli.length < before ? `Oturum ${label}, uyaran ${trial}: uyaransız işaret olarak analiz dışı bırakıldı.`
       : `Uyarı: --iptal ${item} eşleşmedi.`);
+  }
+  for (const [label, when] of Object.entries(fix.end || {})) {
+    const e = exps.find((x) => x.label === label);
+    if (e) e.end = Date.parse(when.replace(' ', 'T') + '+03:00') / 1000;
+    notes.push(e ? `Oturum ${label}: bitiş işareti verilmediği için bitiş ${when.slice(11)} alındı (${(fix.why || {})[label] || 'gerekçe yok'}).`
+      : `Uyarı: bitis ${label} eşleşmedi.`);
   }
   for (const e of exps) if (e.canceled) notes.push(`Oturum ${e.label}: panelden ${e.canceled} uyaran işareti iptal edilmiş.`);
 
@@ -442,7 +450,7 @@ async function main() {
     const before = r ? r.falseAlarms.length : 0;
     if (r) r.falseAlarms = r.falseAlarms.filter((e) => iso(e.t) !== when);
     notes.push(r && r.falseAlarms.length < before
-      ? `Oturum ${label}, ${when.slice(11)}: işaretlenmemiş deneme uyaranının tespiti (yanlış alarm değil) olarak dışlandı.`
+      ? `Oturum ${label}, ${when.slice(11)}: yanlış alarm sayılmadı (${(fix.why || {})[item] || 'işaretlenmemiş deneme uyaranı'}).`
       : `Uyarı: yanlis_alarm_haric ${item} eşleşmedi.`);
   }
 
