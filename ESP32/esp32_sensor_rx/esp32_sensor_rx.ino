@@ -123,7 +123,7 @@ static int wifiIdx = 0;
 #define MQTT_USER   SECRET_MQTT_USER
 #define MQTT_PASS   SECRET_MQTT_PASS
 #define MQTT_BASE   "stm32iot-fa6dbb/cihaz01"   // Node-RED akisindaki onekle ayni olmali
-#define FW_VERSION  "1.6"
+#define FW_VERSION  "1.7"
 
 #define API_URL         SECRET_API_URL
 #define API_KEY         SECRET_API_KEY
@@ -364,16 +364,42 @@ static String mqttTopic(const char *leaf)
   return String(MQTT_BASE "/") + leaf;
 }
 
+// Yayinlar ayri bir gorevden yapilir. esp-mqtt istemcisi, ag yavasken ya da yeniden
+// baglanirken API kilidini saniyelerce tutabilir; yayin ana donguden yapildiginda
+// dongu de bekliyor, STM32 satirlari birikip gecikmeli (yanlis zaman damgasiyla)
+// isleniyordu (deney 3, 17.11.2026: 23:40:35-23:41:00 arasi ~25 s takilma).
+// Kuyruk doluysa mesaj atilir (mqttPubDrops), dongu hicbir zaman beklemez.
 // QoS1 mesajlar baglanti yokken outbox'ta bekletilir, baglaninca gonderilir.
 // QoS0 (telemetri) yalnizca bagliyken gonderilir.
+struct PubMsg { char *topic; char *payload; int8_t qos; bool retain; };
+static QueueHandle_t mqttPubQueue = nullptr;
+static volatile uint32_t mqttPubDrops = 0;
+
+static void mqttPubTask(void *)
+{
+  PubMsg m;
+  for (;;) {
+    if (xQueueReceive(mqttPubQueue, &m, portMAX_DELAY) != pdTRUE) continue;
+    if (m.qos > 0) {
+      esp_mqtt_client_enqueue(mqtt, m.topic, m.payload, 0, m.qos, m.retain, true);
+    } else if (mqttConnected) {
+      esp_mqtt_client_publish(mqtt, m.topic, m.payload, 0, 0, m.retain);
+    }
+    free(m.topic);
+    free(m.payload);
+  }
+}
+
 static void mqttPublish(const char *leaf, const char *payload, int qos, bool retain)
 {
-  if (!mqtt) return;
+  if (!mqtt || !mqttPubQueue) return;
+  if (qos == 0 && !mqttConnected) return;
   String t = mqttTopic(leaf);
-  if (qos > 0) {
-    esp_mqtt_client_enqueue(mqtt, t.c_str(), payload, 0, qos, retain, true);
-  } else if (mqttConnected) {
-    esp_mqtt_client_publish(mqtt, t.c_str(), payload, 0, 0, retain);
+  PubMsg m = {strdup(t.c_str()), strdup(payload), (int8_t)qos, retain};
+  if (!m.topic || !m.payload || xQueueSend(mqttPubQueue, &m, 0) != pdTRUE) {
+    free(m.topic);
+    free(m.payload);
+    mqttPubDrops++;
   }
 }
 
@@ -508,7 +534,9 @@ static void mqttStart()
   cfg.outbox.limit = 32768;   // baglanti yokken bekletilecek olay mesajlari
 
   mqttRxQueue = xQueueCreate(4, sizeof(MqttMsg));
+  mqttPubQueue = xQueueCreate(32, sizeof(PubMsg));
   mqtt = esp_mqtt_client_init(&cfg);
+  xTaskCreatePinnedToCore(mqttPubTask, "mqttpub", 4096, nullptr, 1, nullptr, 0);
   esp_mqtt_client_register_event(mqtt, MQTT_EVENT_ANY, mqttEventHandler, nullptr);
   esp_mqtt_client_start(mqtt);
   Serial.printf("MQTT: %s, konu oneki %s/\n", MQTT_URI, MQTT_BASE);
