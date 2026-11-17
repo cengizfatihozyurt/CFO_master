@@ -812,6 +812,276 @@
         }
       },
       {
+        "id": 11,
+        "type": "timeseries",
+        "title": "Pencere başına örnek sayısı (N, hedef 500)",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-sensor"
+        },
+        "description": "STM32 her 1 s pencerede gerçekten okuduğu ivme örneği sayısını gönderir. Hedef 2 ms aralıkla 500 örnektir; eksik örnekler okuma düzensizliğini gösterir.",
+        "gridPos": {
+          "x": 0,
+          "y": 43,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "influxdb",
+              "uid": "influx-sensor"
+            },
+            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and (r._field == \"n\"))\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: min, createEmpty: false)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "lineWidth": 1,
+              "fillOpacity": 0,
+              "showPoints": "never",
+              "spanNulls": 30000,
+              "thresholdsStyle": {
+                "mode": "line+area"
+              }
+            },
+            "decimals": 0,
+            "color": {
+              "mode": "fixed",
+              "fixedColor": "blue"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "transparent",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 500
+                }
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "n"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "N (pencerede en düşük)"
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "calcs": [
+              "min",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          }
+        }
+      },
+      {
+        "id": 12,
+        "type": "timeseries",
+        "title": "İki okuma arası süre (ms, hedef 2 ms)",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-sensor"
+        },
+        "description": "Ardışık iki ivme okuması arasındaki en kısa (DTN) ve en uzun (DTX) süre. DTX ~7,4 ms: ESP32'ye bloklayan UART gönderimi; ~8,3 ms: buna DS18B20 okuması eklenen saniyeler.",
+        "gridPos": {
+          "x": 12,
+          "y": 43,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "influxdb",
+              "uid": "influx-sensor"
+            },
+            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and (r._field == \"dtn\"))\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> map(fn: (r) => ({r with _value: float(v: r._value) / 1000.0}))\n  |> aggregateWindow(every: v.windowPeriod, fn: min, createEmpty: false)"
+          },
+          {
+            "refId": "B",
+            "datasource": {
+              "type": "influxdb",
+              "uid": "influx-sensor"
+            },
+            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and (r._field == \"dtx\"))\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> map(fn: (r) => ({r with _value: float(v: r._value) / 1000.0}))\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "lineWidth": 1,
+              "fillOpacity": 0,
+              "showPoints": "never",
+              "spanNulls": 30000,
+              "thresholdsStyle": {
+                "mode": "line+area"
+              }
+            },
+            "unit": "ms",
+            "decimals": 1,
+            "min": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "transparent",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 2
+                }
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "dtn"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "En kısa aralık (DTN)"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "dtx"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "En uzun aralık (DTX)"
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "calcs": [
+              "min",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          }
+        }
+      },
+      {
+        "id": 13,
+        "type": "timeseries",
+        "title": "Tepe ivme ve RMS (g)",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-sensor"
+        },
+        "description": "Tepe (P): pencere ortalamasına göre en büyük mutlak sapma. RMS (v): pencerenin toplam titreşim RMS değeri. Darbelerde tepe RMS'in çok üzerine çıkar.",
+        "gridPos": {
+          "x": 0,
+          "y": 51,
+          "w": 24,
+          "h": 8
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "influxdb",
+              "uid": "influx-sensor"
+            },
+            "query": "from(bucket: \"sensor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and (r._field == \"p\" or r._field == \"v\"))\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "lineWidth": 1,
+              "fillOpacity": 6,
+              "showPoints": "never",
+              "spanNulls": 30000
+            },
+            "unit": "none",
+            "decimals": 3,
+            "min": 0
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "p"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "Tepe ivme (g)"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "v"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "Titreşim RMS (g)"
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "calcs": [
+              "min",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          }
+        }
+      },
+      {
         "id": 8,
         "type": "table",
         "title": "Alarm / olay geçmişi",
@@ -821,7 +1091,7 @@
         },
         "gridPos": {
           "x": 0,
-          "y": 43,
+          "y": 59,
           "w": 24,
           "h": 10
         },
