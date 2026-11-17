@@ -6,7 +6,7 @@ STM32F103C8T6 ile sıcaklık (DS18B20) ve titreşim (ADXL345) ölçümü; ESP32 
 DS18B20 (PA1) ┐
               ├─ STM32F103 ──UART2──> ESP32 ──┬─ Web paneli + yerel kayıt (LittleFS)
 ADXL345 (SPI1)┘                               ├─ MQTT (TLS) ──> HiveMQ Cloud ──köprü──> Mosquitto ──> Node-RED ──> InfluxDB ──> Grafana
-                                              └─ HTTPS ──> Bulut API (Render) ──> Postgres
+                                              └─ HTTPS ──> Bulut API (Render) ──> Postgres (Neon)
 ```
 
 ## Klasörler
@@ -100,7 +100,9 @@ https://stm32iot-api-fh72.onrender.com adresi tarayıcıda bir panel açar: canl
 
 `/` ve `/health` dışındaki tüm uçlar `X-API-Key` başlığı ister. Yazma uçları sadece `API_KEY`, okuma uçları `API_KEY` ya da `VIEW_KEY` kabul eder.
 
-**Render ücretsiz plan notları:** Web servisi ayda 750 saate kadar ücretsizdir (7/24 tek servis için yeterli). 15 dakika istek gelmezse uyur; ESP32 sürekli gönderdiği için uyumaz. **Ücretsiz Postgres 30 gün sonra silinir.** Kalıcı saklama için veritabanını ücretli plana yükselt ya da `DATABASE_URL`'yi süresiz ücretsiz bir Postgres'e yönlendir.
+**Render ücretsiz plan notları:** Web servisi ayda 750 saate kadar ücretsizdir (7/24 tek servis için yeterli). 15 dakika istek gelmezse uyur; ESP32 sürekli gönderdiği için uyumaz.
+
+**Veritabanı (Neon):** Render'ın ücretsiz Postgres'i 30 günde silindiği için veritabanı 2026-11-17'de **Neon**'a (ücretsiz, kalıcı; proje `stm32iot`, AWS Frankfurt) taşındı. API'nin `DATABASE_URL` ortam değişkeni Neon'un bağlantı adresidir (Render → servis → Environment). Taşıma [`api/tasi.js`](api/tasi.js) ile yapıldı: tüm kayıtlar kopyalandı (18.974 ölçüm, 702 olay), API Neon'a geçirildi, geçiş sırasında Render'a gelen kayıtlar ikinci çalıştırmayla aktarıldı; iki taraftaki sayılar karşılaştırılarak doğrulandı.
 
 ## Hata kodları
 

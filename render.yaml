@@ -1,5 +1,7 @@
-# Render Blueprint: API servisi + Postgres veritabani
+# Render Blueprint: API servisi (veritabani Neon'da, Render disinda)
 # Render paneli -> New -> Blueprint -> bu repoyu sec
+# Not: Render'in ucretsiz Postgres'i 30 gunde silindigi icin veritabani 2026-11'de
+# Neon'a (ucretsiz, kalici) tasindi. DATABASE_URL Neon baglanti adresidir.
 services:
   - type: web
     name: stm32iot-api
@@ -15,11 +17,4 @@ services:
       - key: VIEW_KEY
         sync: false          # Istege bagli: panel icin sadece okuma sifresi (bos birakilabilir)
       - key: DATABASE_URL
-        fromDatabase:
-          name: stm32iot-db
-          property: connectionString
-
-databases:
-  - name: stm32iot-db
-    plan: free               # Ucretsiz Postgres 30 gun sonra silinir; kalici kullanim icin yukselt
-    databaseName: stm32iot   # ya da DATABASE_URL'yi baska bir Postgres'e (or. Neon) yonlendir
+        sync: false          # Neon -> Connect -> Connection string (Render panelinde girilir)

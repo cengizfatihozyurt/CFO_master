@@ -30,3 +30,5 @@ Release/
 # --- API (Node.js) ---
 api/node_modules/
 api/*.db
+.neon
+node_modules/
