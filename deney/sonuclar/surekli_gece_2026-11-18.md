@@ -1,6 +1,6 @@
 # Uzun süreli normal çalışma: gece_2026-11-18
 
-Aralık: 2026-11-18 00:25:00 – 2026-11-18 22:00:00 (21 sa 35 dk) · Koşul: masa üzerinde, sabit; ESP32 telefon hotspot'unda · Oluşturma: 2026-11-18 22:47:35
+Aralık: 2026-11-18 00:25:00 – 2026-11-18 22:00:00 (21 sa 35 dk) · Koşul: masa üzerinde, sabit; ESP32 telefon hotspot'unda · Oluşturma: 2026-11-18 22:49:17
 
 ## Yanlış alarm
 
@@ -45,3 +45,5 @@ Aralık: 2026-11-18 00:25:00 – 2026-11-18 22:00:00 (21 sa 35 dk) · Koşul: ma
 Yanlış alarm: bu aralıkta uyaran uygulanmadığı için her anomali başlangıcı yanlış alarm sayılır.
 Kayıt bütünlüğü cihazın yerel kaydına dayanır; canlı yol kesildiğinde kayıtlar cihazda bekletilip bağlantı gelince gönderilir (depola-ilet).
 Olaylar, cihazın olay listesi ve 10 s kayıtlardaki alarm bitleri birleştirilerek sayılır (olay listesinin bir yolda eksik kalması sonucu etkilemez).
+
+**Not:** 11:20:37'deki A01 (0,54 g) gündüz, evde kişiler varken oluştu; masaya dokunulmuş ya da çarpılmış olabilir (kullanıcı: olabilir), ancak doğrulanamadı. Bu nedenle tabloda yanlış alarm olarak sayılmıştır (en kötü durum 0,05/saat); dış etki kabul edilirse yanlış alarm 0'dır.

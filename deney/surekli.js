@@ -184,6 +184,7 @@ async function main() {
   L.push('', 'Yanlış alarm: bu aralıkta uyaran uygulanmadığı için her anomali başlangıcı yanlış alarm sayılır.',
     'Kayıt bütünlüğü cihazın yerel kaydına dayanır; canlı yol kesildiğinde kayıtlar cihazda bekletilip bağlantı gelince gönderilir (depola-ilet).',
     'Olaylar, cihazın olay listesi ve 10 s kayıtlardaki alarm bitleri birleştirilerek sayılır (olay listesinin bir yolda eksik kalması sonucu etkilemez).');
+  if (arg('--not')) L.push('', '**Not:** ' + arg('--not'));
 
   fs.mkdirSync(OUT_DIR, {recursive: true});
   const out = path.join(OUT_DIR, `surekli_${name}.md`);
