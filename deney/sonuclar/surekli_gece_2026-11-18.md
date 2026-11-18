@@ -1,15 +1,20 @@
 # Uzun süreli normal çalışma: gece_2026-11-18
 
-Aralık: 2026-11-18 00:25:00 – 2026-11-18 22:00:00 (21 sa 35 dk) · Koşul: masa üzerinde, sabit; ESP32 telefon hotspot'unda · Oluşturma: 2026-11-18 22:35:35
+Aralık: 2026-11-18 00:25:00 – 2026-11-18 22:00:00 (21 sa 35 dk) · Koşul: masa üzerinde, sabit; ESP32 telefon hotspot'unda · Oluşturma: 2026-11-18 22:47:35
 
 ## Yanlış alarm
 
 | Ölçüt | Değer |
 | --- | --- |
-| Anomali başlangıcı (A01–A04) | 0 |
-| Yanlış alarm / saat | 0,00 |
-| Eşik alarmı başlangıcı (E01–E04) | 0 |
+| Anomali başlangıcı (A01–A04) | 1 |
+| Yanlış alarm / saat | 0,05 |
+| Eşik alarmı başlangıcı (E01–E04) | 1 |
 | Alarm bayraklı 10 s kayıt | 1 |
+
+| Zaman | Kod | Değer (g) | Kaynak |
+| --- | --- | --- | --- |
+| 2026-11-18 11:20:37 | A01 | 0,539 | olay listesi |
+| 2026-11-18 11:20:37 | E02 | 0,539 | olay listesi |
 
 ## Kayıt bütünlüğü (cihazın yerel kaydı, buluta ulaşan)
 
@@ -39,3 +44,4 @@ Aralık: 2026-11-18 00:25:00 – 2026-11-18 22:00:00 (21 sa 35 dk) · Koşul: ma
 
 Yanlış alarm: bu aralıkta uyaran uygulanmadığı için her anomali başlangıcı yanlış alarm sayılır.
 Kayıt bütünlüğü cihazın yerel kaydına dayanır; canlı yol kesildiğinde kayıtlar cihazda bekletilip bağlantı gelince gönderilir (depola-ilet).
+Olaylar, cihazın olay listesi ve 10 s kayıtlardaki alarm bitleri birleştirilerek sayılır (olay listesinin bir yolda eksik kalması sonucu etkilemez).

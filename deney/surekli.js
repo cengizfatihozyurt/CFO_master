@@ -115,6 +115,22 @@ async function main() {
     if (!ev.has(`${t}|${e.code}|${e.state}`)) ev.set(`${t}|${e.code}|${e.state}`, {t, code: e.code, state: e.state, value: Number(e.value)});
   }
   const events = [...ev.values()].sort((a, b) => a.t - b.t);
+  // 10 s kayitlarin alarm bitlerinden olay baslangiclari (olay listesi bir yolda eksik
+  // kalsa bile cihazin kaydi bunlari tasir; or. FW 1.8'de olaylar buluta gitmiyordu)
+  const BITS = {E01: 0x01, E02: 0x02, E03: 0x04, E04: 0x08, A01: 0x10, A02: 0x20, A03: 0x40, A04: 0x80};
+  let prevFlags = 0, fromFlags = 0;
+  for (const r of rec) {
+    const f = Number(r.flags) || 0;
+    for (const [code, bit] of Object.entries(BITS)) {
+      if ((f & bit) && !(prevFlags & bit)
+          && !events.some((e) => e.code === code && e.state === 'BASLADI' && Math.abs(e.t - r.t) <= 15)) {
+        events.push({t: r.t, code, state: 'BASLADI', value: Number(r.v), kayit: true});
+        fromFlags++;
+      }
+    }
+    prevFlags = f;
+  }
+  events.sort((a, b) => a.t - b.t);
   const fa = events.filter((e) => e.state === 'BASLADI' && ANOMALY.includes(e.code));
   const alarms = events.filter((e) => e.state === 'BASLADI' && !ANOMALY.includes(e.code));
 
@@ -139,8 +155,8 @@ async function main() {
   L.push(`| Eşik alarmı başlangıcı (E01–E04) | ${alarms.length} |`);
   L.push(`| Alarm bayraklı 10 s kayıt | ${flagged} |`, '');
   if (fa.length || alarms.length) {
-    L.push('| Zaman | Kod | Değer |', '| --- | --- | --- |');
-    for (const e of [...fa, ...alarms].sort((a, b) => a.t - b.t)) L.push(`| ${loc(e.t)} | ${e.code} | ${num(e.value)} |`);
+    L.push("| Zaman | Kod | Değer (g) | Kaynak |", "| --- | --- | --- | --- |");
+    for (const e of [...fa, ...alarms].sort((a, b) => a.t - b.t)) L.push(`| ${loc(e.t)} | ${e.code} | ${num(e.value)} | ${e.kayit ? "10 s kaydın alarm bitleri" : "olay listesi"} |`);
     L.push('');
   }
   L.push('## Kayıt bütünlüğü (cihazın yerel kaydı, buluta ulaşan)', '');
@@ -166,7 +182,8 @@ async function main() {
     L.push(`| En hızlı sıcaklık artışı (°C/dk, ≥4 dk fark) | ${num(maxRate, 3)} (A04 eşiği 0,5) |`);
   }
   L.push('', 'Yanlış alarm: bu aralıkta uyaran uygulanmadığı için her anomali başlangıcı yanlış alarm sayılır.',
-    'Kayıt bütünlüğü cihazın yerel kaydına dayanır; canlı yol kesildiğinde kayıtlar cihazda bekletilip bağlantı gelince gönderilir (depola-ilet).');
+    'Kayıt bütünlüğü cihazın yerel kaydına dayanır; canlı yol kesildiğinde kayıtlar cihazda bekletilip bağlantı gelince gönderilir (depola-ilet).',
+    'Olaylar, cihazın olay listesi ve 10 s kayıtlardaki alarm bitleri birleştirilerek sayılır (olay listesinin bir yolda eksik kalması sonucu etkilemez).');
 
   fs.mkdirSync(OUT_DIR, {recursive: true});
   const out = path.join(OUT_DIR, `surekli_${name}.md`);
