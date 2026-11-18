@@ -8,7 +8,9 @@
     "8"
   ],
   "iptal": [
-    "1-2:1"
+    "1-2:1",
+    "9:9",
+    "9:10"
   ],
   "yanlis_alarm_haric": [
     "1-3@2026-11-17 23:29:31",
@@ -30,6 +32,8 @@
     "1-3@2026-11-17 23:29:31": "Ilk isaretten once yapilan deneme vurusu (kullanici dogruladi, tepe 12,2 g)",
     "3@2026-11-17 23:40:59": "Deneme 5-6 vuruslarinin gec islenmesi: ESP32 dongusu 23:40:35-23:41:00 arasi takildi, biriken satirlar topluca islendi (yerel kayitta 39 s bosluk); denemeler kacirma sayildi",
     "3@2026-11-17 23:41:00": "Deneme 5-6 vuruslarinin gec islenmesi (ayni takilma)",
-    "3@2026-11-17 23:41:01": "Deneme 5-6 vuruslarinin gec islenmesi (ayni takilma)"
+    "3@2026-11-17 23:41:01": "Deneme 5-6 vuruslarinin gec islenmesi (ayni takilma)",
+    "9:9": "ESP32 yazilim hatasi (panic) ile yeniden basladi (I06, 23:20:28); uyaran cihaz yeniden baslarken verildi. Sistem arizasi, yontem olcumu degil.",
+    "9:10": "Ayni yeniden baslama (23:20:19 uyarani, cihaz 23:20:28de acildi)."
   }
 }

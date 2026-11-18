@@ -1,10 +1,10 @@
 # Deney sonuçları
 
-Oluşturma: 2026-11-18 22:46:46 · Deney sayısı: 5
+Oluşturma: 2026-11-18 23:23:25 · Deney sayısı: 6
 
 | Tür | Deney | Deneme | TP | FN | FP | Precision | Recall | F1 | Gecikme ort. / medyan / en çok (s) | Yanlış alarm / saat |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| A01 Ani darbe | 5 | 45 | 42 | 3 | 0 | 100,0 % | 93,3 % | 96,6 % | 1,5 / 1,0 / 5 | 0,00 |
+| A01 Ani darbe | 6 | 53 | 50 | 3 | 0 | 100,0 % | 94,3 % | 97,1 % | 1,4 / 1,0 / 5 | 0,00 |
 
 **Veri düzeltmeleri ve iletim notları:**
 
@@ -14,13 +14,14 @@ Oluşturma: 2026-11-18 22:46:46 · Deney sayısı: 5
 - Oturum 6 analiz dışı bırakıldı.
 - Oturum 8 analiz dışı bırakıldı.
 - Oturum 1-2, uyaran 1: uyaransız işaret olarak analiz dışı bırakıldı.
+- Oturum 9, uyaran 9: uyaransız işaret olarak analiz dışı bırakıldı.
+- Oturum 9, uyaran 10: uyaransız işaret olarak analiz dışı bırakıldı.
 - Oturum 3: bitiş işareti verilmediği için bitiş 23:41:30 alındı (Bitir'e basilmadi; 10. denemeden sonraki tespitler masanin oynamasindan (kullanici dogruladi)).
 - Oturum 1-3, 23:29:31: yanlış alarm sayılmadı (Ilk isaretten once yapilan deneme vurusu (kullanici dogruladi, tepe 12,2 g)).
 - Oturum 3, 23:40:59: yanlış alarm sayılmadı (Deneme 5-6 vuruslarinin gec islenmesi: ESP32 dongusu 23:40:35-23:41:00 arasi takildi, biriken satirlar topluca islendi (yerel kayitta 39 s bosluk); denemeler kacirma sayildi).
 - Oturum 3, 23:41:00: yanlış alarm sayılmadı (Deneme 5-6 vuruslarinin gec islenmesi (ayni takilma)).
 - Oturum 3, 23:41:01: yanlış alarm sayılmadı (Deneme 5-6 vuruslarinin gec islenmesi (ayni takilma)).
-- İletim: 42 anomali olayından 3 tanesi canlı MQTT/InfluxDB yolunda yok (diğer kaynaklardan tamamlandı): A01 2026-11-17 23:30:48, A01 2026-11-17 23:40:14, A01 2026-11-17 23:41:13
-- İletim: 42 anomali olayından 10 tanesi bulut API yolunda yok (diğer kaynaklardan tamamlandı): A01 2026-11-18 22:34:24, A01 2026-11-18 22:34:30, A01 2026-11-18 22:34:35, A01 2026-11-18 22:34:40, A01 2026-11-18 22:34:48, A01 2026-11-18 22:34:53, A01 2026-11-18 22:34:58, A01 2026-11-18 22:35:03, A01 2026-11-18 22:35:08, A01 2026-11-18 22:35:13
+- İletim: 50 anomali olayından 5 tanesi canlı MQTT/InfluxDB yolunda yok (diğer kaynaklardan tamamlandı): A01 2026-11-17 23:30:48, A01 2026-11-17 23:40:14, A01 2026-11-17 23:41:13, A01 2026-11-18 23:19:26, A01 2026-11-18 23:20:06
 
 TP: doğru tespit · FN: kaçırılan · FP: yanlış alarm (deney süresince eşleşmeyen anomali başlangıcı).
 Precision = TP / (TP + FP) · Recall = TP / (TP + FN) · F1 = 2·P·R / (P + R).
