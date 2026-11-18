@@ -123,7 +123,7 @@ static int wifiIdx = 0;
 #define MQTT_USER   SECRET_MQTT_USER
 #define MQTT_PASS   SECRET_MQTT_PASS
 #define MQTT_BASE   "stm32iot-fa6dbb/cihaz01"   // Node-RED akisindaki onekle ayni olmali
-#define FW_VERSION  "1.8"
+#define FW_VERSION  "1.9"
 
 #define API_URL         SECRET_API_URL
 #define API_KEY         SECRET_API_KEY
@@ -443,11 +443,31 @@ static void mqttPublishAnomaly()
   mqttPublish("anomaly", j, 0, true);   // QoS0: baglanti yokken birikmez, baglaninca yeniden yayinlanir
 }
 
+// Son yeniden baslamanin nedeni (esp_reset_reason); acilista I06 olayi olarak kaydedilir
+static const char *resetReasonName(esp_reset_reason_t r)
+{
+  switch (r) {
+    case ESP_RST_POWERON:   return "guc verildi";
+    case ESP_RST_EXT:       return "harici reset (EN)";
+    case ESP_RST_SW:        return "yazilim (esp_restart)";
+    case ESP_RST_PANIC:     return "yazilim hatasi (panic)";
+    case ESP_RST_INT_WDT:   return "kesme bekcisi (INT WDT)";
+    case ESP_RST_TASK_WDT:  return "gorev bekcisi (TASK WDT)";
+    case ESP_RST_WDT:       return "bekci (WDT)";
+    case ESP_RST_DEEPSLEEP: return "derin uyku";
+    case ESP_RST_BROWNOUT:  return "gerilim dusmesi (brownout)";
+    case ESP_RST_SDIO:      return "SDIO";
+    default:                return "bilinmiyor";
+  }
+}
+
 static void mqttPublishInfo()
 {
-  char j[128];
-  snprintf(j, sizeof(j), "{\"ip\":\"%s\",\"rssi\":%d,\"fw\":\"%s\"}",
-           WiFi.localIP().toString().c_str(), WiFi.RSSI(), FW_VERSION);
+  char j[192];
+  esp_reset_reason_t rr = esp_reset_reason();
+  snprintf(j, sizeof(j), "{\"ip\":\"%s\",\"rssi\":%d,\"fw\":\"%s\",\"reset\":%d,\"resetName\":\"%s\",\"uptime\":%lu}",
+           WiFi.localIP().toString().c_str(), WiFi.RSSI(), FW_VERSION, (int)rr, resetReasonName(rr),
+           (unsigned long)(millis() / 1000));
   mqttPublish("info", j, 1, true);
 }
 
@@ -600,37 +620,55 @@ static void appendEvent(const char *code, const char *state, float value, float 
   trimEvents();
 }
 
-// Olay dosyasini tek okumada RAM'e alir (kilit yalnizca okuma suresince tutulur;
-// eskiden satir satir readStringUntil ile okunuyordu, 64 KB'lik dosyada saniyeler surer)
-static String readEventsText()
-{
-  String s;
-  FsLock lock;
-  File f = LittleFS.open(EVENTS_FILE, FILE_READ);
-  if (!f) return s;
-  size_t n = f.size();
-  char *buf = (char *)malloc(n + 1);
-  if (buf) {
-    size_t r = f.read((uint8_t *)buf, n);
-    s.reserve(r);
-    s.concat(buf, r);
-    free(buf);
-  }
-  f.close();
-  return s;
-}
+// Olay dosyasini satir satir okur. Dosya 1 KB'lik bloklarla okunur; kilit yalnizca
+// blok okunurken tutulur (eskiden readStringUntil ile karakter karakter, kilit altinda
+// okunuyordu; FW 1.8'deki tek parca okuma ise 64 KB'lik bitisik bellek bulamayip bos
+// donuyordu).
+struct EventReader {
+  size_t pos = 0;      // dosyada okunan bayt
+  String buf;
+  int idx = 0;
+  bool eof = false;
 
-// s icinde pos'tan baslayan satiri l'ye koyar (bos satirlar dahil)
-static bool nextLine(const String &s, int &pos, String &l)
-{
-  if (pos >= (int)s.length()) return false;
-  int e = s.indexOf('\n', pos);
-  if (e < 0) e = s.length();
-  l = s.substring(pos, e);
-  pos = e + 1;
-  l.trim();
-  return true;
-}
+  void fill()
+  {
+    char tmp[1025];
+    size_t r = 0;
+    {
+      FsLock lock;
+      File f = LittleFS.open(EVENTS_FILE, FILE_READ);
+      if (f && f.seek(pos)) r = f.read((uint8_t *)tmp, 1024);
+      if (f) f.close();
+    }
+    if (!r) { eof = true; return; }
+    pos += r;
+    tmp[r] = 0;
+    buf += tmp;        // olay satirlarinda NUL yok
+  }
+
+  bool next(String &l)
+  {
+    for (;;) {
+      int e = buf.indexOf('\n', idx);
+      if (e >= 0) {
+        l = buf.substring(idx, e);
+        idx = e + 1;
+        l.trim();
+        return true;
+      }
+      if (eof) {
+        if (idx >= (int)buf.length()) return false;
+        l = buf.substring(idx);
+        idx = buf.length();
+        l.trim();
+        return true;
+      }
+      buf = buf.substring(idx);
+      idx = 0;
+      fill();
+    }
+  }
+};
 
 static String logPath(uint32_t start);
 
@@ -1399,7 +1437,9 @@ static void handleData()
              sensor.vibPeak, (unsigned long)sensor.winN, (unsigned long)sensor.dtMinUs, (unsigned long)sensor.dtMaxUs);
     j += b;
   }
-  snprintf(b, sizeof(b), "\"loopMaxMs\":%lu,\"pubDrops\":%lu,", (unsigned long)loopMaxMs, (unsigned long)mqttPubDrops);
+  snprintf(b, sizeof(b), "\"loopMaxMs\":%lu,\"pubDrops\":%lu,\"heap\":{\"free\":%lu,\"min\":%lu,\"maxBlock\":%lu},",
+           (unsigned long)loopMaxMs, (unsigned long)mqttPubDrops, (unsigned long)ESP.getFreeHeap(),
+           (unsigned long)ESP.getMinFreeHeap(), (unsigned long)ESP.getMaxAllocHeap());
   j += b;
   snprintf(b, sizeof(b),
            "\"now\":%lu,\"synced\":%s,\"tset\":%.2f,\"vset\":%.3f,\"logint\":%u,\"alarms\":[",
@@ -1598,18 +1638,30 @@ static String jsonNum(const String &s)
 
 static void handleEvents()
 {
-  std::vector<String> lines;
+  // Bellek: once satirlar sayilir, yalnizca son EVENTS_MAX_SHOWN satir tutulur ve
+  // yanit parca parca gonderilir (tek parca ~15 KB yanit + bulut yuklemesinin TLS
+  // bellegi ayni anda yetmeyip cihazi yeniden baslatiyordu, 18.11.2026)
+  size_t total = 0;
   {
-    String all = readEventsText();
-    int pos = 0;
+    EventReader rd;
     String l;
-    while (nextLine(all, pos, l)) {
+    while (rd.next(l)) if (l.length()) total++;
+  }
+  size_t skip = total > EVENTS_MAX_SHOWN ? total - EVENTS_MAX_SHOWN : 0;
+  std::vector<String> lines;
+  lines.reserve(total - skip);
+  {
+    EventReader rd;
+    String l;
+    size_t k = 0;
+    while (rd.next(l) && lines.size() < total - skip) {
       if (!l.length()) continue;
-      lines.push_back(l);
-      if (lines.size() > EVENTS_MAX_SHOWN) lines.erase(lines.begin());
+      if (k++ >= skip) lines.push_back(l);
     }
   }
 
+  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server.send(200, "application/json", "");
   String j = "[";
   bool first = true;
   for (int i = (int)lines.size() - 1; i >= 0; i--) {
@@ -1624,23 +1676,27 @@ static void handleEvents()
     j += jsonNum(fl[4]);
     j += ",\"" + fl[5] + "\"]";
     first = false;
+    if (j.length() > 1500) {
+      server.sendContent(j);
+      j = "";
+    }
   }
   j += ']';
-  server.send(200, "application/json", j);
+  server.sendContent(j);
+  server.sendContent("");
 }
 
 static void handleEventsCsv()
 {
-  String all = readEventsText();
   server.sendHeader("Content-Disposition", "attachment; filename=olaylar.csv");
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, "text/csv; charset=utf-8", "");
   String out = "\xEF\xBB\xBF" "zaman;kod;durum;deger;limit;aciklama\r\n";
 
   {
-    int pos = 0;
+    EventReader rd;
     String l;
-    while (nextLine(all, pos, l)) {
+    while (rd.next(l)) {
       String fl[6];
       if (!splitEvent(l, fl)) continue;
       char ts[24];
@@ -1899,13 +1955,11 @@ static String telemetryJson(const LogRec *r, size_t n)
 // cursor'dan sonraki olaylari JSON'a cevir; gonderilen son olayin zamanini lastT'ye yaz
 static size_t collectEventsJson(uint32_t cursor, String &json, uint32_t &lastT)
 {
-  String all = readEventsText();
-  if (!all.length()) return 0;
   json = "{\"device\":\"" API_DEVICE "\",\"events\":[";
   size_t n = 0;
-  int pos = 0;
+  EventReader rd;
   String l;
-  while (nextLine(all, pos, l)) {
+  while (rd.next(l)) {
     String fl[6];
     if (!splitEvent(l, fl)) continue;
     uint32_t t = strtoul(fl[0].c_str(), nullptr, 10);
@@ -2080,6 +2134,13 @@ void setup()
     Serial.printf("Saat ayarlandi: %s\n", ts);
   } else {
     Serial.println("Saat henuz ayarlanamadi (NTP), ayarlanana kadar kayit yapilmaz");
+  }
+  {
+    esp_reset_reason_t rr = esp_reset_reason();
+    char desc[64];
+    snprintf(desc, sizeof(desc), "Cihaz yeniden başladı: %s", resetReasonName(rr));
+    Serial.printf("Yeniden baslama nedeni: %d (%s)\n", (int)rr, resetReasonName(rr));
+    if (fsOk) appendEvent("I06", "BILGI", (float)rr, NAN, desc);
   }
 
   server.on("/", handleRoot);
