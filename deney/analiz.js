@@ -68,20 +68,37 @@ function influxConfig() {
   };
 }
 
-// ESP32'nin guncel IP adresi: ag degisince degisir. ESP32_HOST yoksa yerel broker'daki
-// retained "info" mesajindan okunur (mosquitto_sub, esp32 kullanicisi), olmazsa ev agi adresi.
-function esp32Host() {
+// ESP32'nin guncel IP adresi: ag degisince degisir. Sira: ESP32_HOST; yerel broker'daki
+// retained "info" mesaji (koprudeki mesajlar retained bayragini kaybettigi icin eski kalabilir);
+// bunlar yanit vermezse bilgisayarin bagli oldugu /24 aglarda /data yaniti veren cihaz aranir.
+let esp32HostCache = null;
+async function isEsp32(host) {
+  try {
+    const r = await fetch(`http://${host}/data`, {signal: AbortSignal.timeout(2500)});
+    return (await r.text()).includes('packetCount');
+  } catch (e) { return false; }
+}
+async function esp32Host() {
   if (process.env.ESP32_HOST) return process.env.ESP32_HOST;
+  if (esp32HostCache) return esp32HostCache;
+  const cands = [];
   try {
     const notes = fs.readFileSync(path.join(ROOT, 'ESP32', 'node-red', 'mqtt_kullanicilar.txt'), 'utf8');
     const pw = notes.match(/^\s*esp32\s*:\s*(\S+)/m)[1];
     const out = require('child_process').execFileSync('C:\\Program Files\\Mosquitto\\mosquitto_sub.exe',
       ['-h', 'localhost', '-u', 'esp32', '-P', pw, '-t', 'stm32iot-fa6dbb/cihaz01/info', '-C', '1', '-W', '5'],
       {encoding: 'utf8', timeout: 8000});
-    return JSON.parse(out).ip;
-  } catch (e) {
-    return '192.168.1.66';
+    cands.push(JSON.parse(out).ip);
+  } catch (e) { /* info yok */ }
+  for (const h of cands) if (await isEsp32(h)) return (esp32HostCache = h);
+  const nets = Object.values(os.networkInterfaces()).flat()
+    .filter((a) => a && a.family === 'IPv4' && !a.internal).map((a) => a.address.split('.').slice(0, 3).join('.'));
+  for (const net of [...new Set(nets)]) {
+    const found = [];
+    await Promise.all(Array.from({length: 254}, (_, i) => `${net}.${i + 1}`).map(async (h) => { if (await isEsp32(h)) found.push(h); }));
+    if (found.length) return (esp32HostCache = found[0]);
   }
+  return cands[0] || '192.168.1.165';
 }
 
 function viewKey() {
@@ -200,7 +217,7 @@ async function loadEvents(cfg, from, to) {
   } catch (e) { reached.bulut = false; }
 
   try {
-    const r = await fetch(`http://${esp32Host()}/events`, {signal: AbortSignal.timeout(10000)});
+    const r = await fetch(`http://${await esp32Host()}/events`, {signal: AbortSignal.timeout(10000)});
     for (const e of await r.json()) if (e[0] >= from && e[0] <= to) add('yerel', e[0], e[1], e[2], e[3]);
     reached.yerel = true;
   } catch (e) { reached.yerel = false; }
@@ -319,7 +336,7 @@ function writeOutputs(results, notes = []) {
 /* ------------------------------------------------------------------ kesinti raporu */
 
 async function outageReport(cfg, exp) {
-  const host = esp32Host();
+  const host = await esp32Host();
   const api = process.env.API_URL || 'https://stm32iot-api-fh72.onrender.com';
   const device = process.env.API_DEVICE || 'cihaz01';
   const from = Math.floor(exp.start), to = Math.ceil(exp.end || Date.now() / 1000);

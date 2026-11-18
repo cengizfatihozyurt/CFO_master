@@ -79,6 +79,9 @@
 // Bilinen Wi-Fi aglari: baglanti yoksa sirayla denenir (ev agi, telefon hotspotu ...)
 struct WifiNet { const char *ssid, *pass; };
 static const WifiNet WIFI_NETS[] = {
+#ifdef SECRET_WIFI3_SSID
+  {SECRET_WIFI3_SSID, SECRET_WIFI3_PASS},   // ilk sirada denenir
+#endif
   {SECRET_WIFI_SSID, SECRET_WIFI_PASS},
 #ifdef SECRET_WIFI2_SSID
   {SECRET_WIFI2_SSID, SECRET_WIFI2_PASS},
