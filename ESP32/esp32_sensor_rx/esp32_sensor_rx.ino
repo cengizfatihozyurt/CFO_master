@@ -74,6 +74,7 @@
 #include <math.h>
 #include <vector>
 #include <algorithm>
+#include "esp_core_dump.h"
 
 // Bilinen Wi-Fi aglari: baglanti yoksa sirayla denenir (ev agi, telefon hotspotu ...)
 struct WifiNet { const char *ssid, *pass; };
@@ -123,12 +124,14 @@ static int wifiIdx = 0;
 #define MQTT_USER   SECRET_MQTT_USER
 #define MQTT_PASS   SECRET_MQTT_PASS
 #define MQTT_BASE   "stm32iot-fa6dbb/cihaz01"   // Node-RED akisindaki onekle ayni olmali
-#define FW_VERSION  "1.9"
+#define FW_VERSION  "1.10"
 
 #define API_URL         SECRET_API_URL
 #define API_KEY         SECRET_API_KEY
 #define API_DEVICE      "cihaz01"     // API'deki cihaz adi
-#define API_BATCH       100           // istek basina en fazla olcum
+#define API_BATCH       50            // istek basina en fazla olcum (bellek: JSON ~5 KB)
+#define API_MIN_FREE_HEAP 70000      // HTTPS baslatmak icin gereken en az bos bellek (B)
+#define API_MIN_BLOCK     20000      // ve en buyuk ayrilabilir blok (B; TLS 16 KB tampon ayirir)
 #define API_EVENT_BATCH 50            // istek basina en fazla olay
 #define API_PERIOD_MS   5000          // bekleyen veri yoksa kontrol araligi
 #define API_RETRY_MS    30000         // sunucuya ulasilamazsa tekrar deneme araligi
@@ -250,6 +253,16 @@ struct FsLock {
   ~FsLock() { if (fsMutex) xSemaphoreGiveRecursive(fsMutex); }
 };
 
+// Bellek: buyuk web yanitlari (/events, /history, CSV'ler) ile bulut yuklemesi (HTTPS/TLS)
+// ayni anda calismaz. Ikisi birlikte bellegi tuketip cihazi yeniden baslatiyordu
+// (core dump 18.11.2026 23:34: web gorevi, olay listesi okunurken bellek bitti).
+static SemaphoreHandle_t heavyMutex = nullptr;
+struct HeavyLock {
+  bool ok;
+  explicit HeavyLock(uint32_t ms) { ok = heavyMutex && xSemaphoreTake(heavyMutex, pdMS_TO_TICKS(ms)) == pdTRUE; }
+  ~HeavyLock() { if (ok) xSemaphoreGive(heavyMutex); }
+};
+
 // Web sunucusu ayri gorevde calisir. Ayarlari/anomali modelini degistiren istekler
 // ile ana dongunun olcum isleme bolumu bu kilitle sirayla calisir.
 static SemaphoreHandle_t stateMutex = nullptr;
@@ -270,6 +283,9 @@ static size_t lineLen = 0;
 
 static esp_mqtt_client_handle_t mqtt = nullptr;
 static volatile bool mqttConnected = false;
+static volatile bool mqttConnecting = false;   // TLS el sikismasi suruyor (HTTPS bu sirada baslamaz)
+static uint32_t mqttLastTryMs = 0;
+static volatile uint32_t fsSkips = 0;          // bellek yetersizligi nedeniyle yazilamayan kayit/olay
 static volatile bool mqttAnnounce = false;   // baglaninca durum/ayar yayinla
 static QueueHandle_t mqttRxQueue = nullptr;
 
@@ -384,6 +400,7 @@ static String mqttTopic(const char *leaf)
 struct PubMsg { char *topic; char *payload; int8_t qos; bool retain; };
 static QueueHandle_t mqttPubQueue = nullptr;
 static volatile uint32_t mqttPubDrops = 0;
+static volatile uint32_t apiHeapWaits = 0;   // bellek yetersiz diye ertelenen bulut yuklemesi
 static uint32_t loopMaxMs = 0;   // en uzun ana dongu suresi (tani, /data)
 
 static void mqttPubTask(void *)
@@ -520,11 +537,13 @@ static void mqttEventHandler(void *args, esp_event_base_t base, int32_t id, void
   switch ((esp_mqtt_event_id_t)id) {
     case MQTT_EVENT_CONNECTED:
       mqttConnected = true;
+      mqttConnecting = false;
       esp_mqtt_client_subscribe(ev->client, setTopic, 1);
       mqttAnnounce = true;
       break;
     case MQTT_EVENT_DISCONNECTED:
       mqttConnected = false;
+      mqttConnecting = false;
       break;
     case MQTT_EVENT_DATA:
       if (ev->topic_len == (int)strlen(setTopic) &&
@@ -562,15 +581,36 @@ static void mqttStart()
   cfg.session.last_will.msg = "offline";
   cfg.session.last_will.qos = 1;
   cfg.session.last_will.retain = 1;
-  cfg.outbox.limit = 32768;   // baglanti yokken bekletilecek olay mesajlari
+  cfg.outbox.limit = 12288;   // baglanti yokken bekletilecek olay mesajlari (bellek siniri; olaylar ayrica yerelde ve bulutta)
+  // Yeniden baglanmayi API gorevi baslatir (mqttMaybeReconnect): iki TLS el sikismasi
+  // (MQTT + HTTPS, her biri ~40 KB) ayni anda olunca bellek bitip cihaz cokuyordu.
+  cfg.network.disable_auto_reconnect = true;
 
   mqttRxQueue = xQueueCreate(4, sizeof(MqttMsg));
   mqttPubQueue = xQueueCreate(32, sizeof(PubMsg));
   mqtt = esp_mqtt_client_init(&cfg);
   xTaskCreatePinnedToCore(mqttPubTask, "mqttpub", 4096, nullptr, 1, nullptr, 0);
   esp_mqtt_client_register_event(mqtt, MQTT_EVENT_ANY, mqttEventHandler, nullptr);
+  mqttConnecting = true;
+  mqttLastTryMs = millis();
   esp_mqtt_client_start(mqtt);
   Serial.printf("MQTT: %s, konu oneki %s/\n", MQTT_URI, MQTT_BASE);
+}
+
+// MQTT koparsa yeniden baglanmayi yalnizca API gorevi baslatir (HTTPS ile ayni gorev:
+// iki TLS el sikismasi ust uste binmez). Takili kalan baglanma 30 s sonra serbest birakilir.
+static void mqttMaybeReconnect()
+{
+  if (!mqtt || mqttConnected) return;
+  if (mqttConnecting) {
+    if (millis() - mqttLastTryMs > 30000) mqttConnecting = false;
+    return;
+  }
+  if (WiFi.status() != WL_CONNECTED || millis() - mqttLastTryMs < 5000) return;
+  if (ESP.getFreeHeap() < API_MIN_FREE_HEAP) return;
+  mqttLastTryMs = millis();
+  mqttConnecting = true;
+  esp_mqtt_client_reconnect(mqtt);
 }
 
 /* --------------------------- Olay kaydi ---------------------------------- */
@@ -602,6 +642,15 @@ static void trimEvents()
   }
 }
 
+// Dosya acmak icin az da olsa bellek gerekir (FILE yapisi + kilit). Bellek o an
+// tukenmisse newlib abort eder (core dump 18.11.2026 23:20); yazmayi atla ve say.
+static bool fsHeapOk()
+{
+  if (ESP.getMaxAllocHeap() >= 4096) return true;
+  fsSkips++;
+  return false;
+}
+
 // Satir bicimi: epoch,kod,durum,deger,limit,aciklama  (aciklamada virgul olmaz)
 static void appendEvent(const char *code, const char *state, float value, float limit, const char *desc)
 {
@@ -612,12 +661,17 @@ static void appendEvent(const char *code, const char *state, float value, float 
   mqttPublishEvent(t, code, state, value, limit, desc);
 
   if (!fsOk) return;
+  if (!fsHeapOk()) return;
   FsLock lock;
-  File f = LittleFS.open(EVENTS_FILE, FILE_APPEND);
-  if (!f) return;
-  f.printf("%lu,%s,%s,%.3f,%.3f,%s\n", (unsigned long)t, code, state, value, limit, desc);
-  f.close();
-  trimEvents();
+  try {
+    File f = LittleFS.open(EVENTS_FILE, FILE_APPEND);
+    if (!f) return;
+    f.printf("%lu,%s,%s,%.3f,%.3f,%s\n", (unsigned long)t, code, state, value, limit, desc);
+    f.close();
+    trimEvents();
+  } catch (...) {
+    fsSkips++;
+  }
 }
 
 // Olay dosyasini satir satir okur. Dosya 1 KB'lik bloklarla okunur; kilit yalnizca
@@ -836,10 +890,17 @@ static void writeRecord(const LogRec &r)
     }
     logFiles.push_back({start, 0});
   }
-  File f = LittleFS.open(logPath(logFiles.back().start), FILE_APPEND);
-  if (!f) return;
-  size_t w = f.write((const uint8_t *)&r, sizeof(r));
-  f.close();
+  if (!fsHeapOk()) return;
+  size_t w = 0;
+  try {
+    File f = LittleFS.open(logPath(logFiles.back().start), FILE_APPEND);
+    if (!f) return;
+    w = f.write((const uint8_t *)&r, sizeof(r));
+    f.close();
+  } catch (...) {
+    fsSkips++;
+    return;
+  }
   logFiles.back().size += w;
   logBytes += w;
   enforceLogLimit();
@@ -1293,7 +1354,7 @@ async function loadHistory() {
 
 async function loadEvents() {
   try {
-    const ev = await getJSON('/events');   // [t, kod, durum, deger|null, limit|null, aciklama], yeniden eskiye
+    const ev = (await getJSON('/events')).reverse();   // [t, kod, durum, deger|null, limit|null, aciklama]; cihaz eskiden yeniye gonderir
     $('events').innerHTML = ev.length ? ev.map(e => {
       const dec = e[1] === 'E01' ? 2 : 3;
       return `<tr class="${e[2]}"><td>${fmt(e[0])}</td><td><b>${esc(e[1])}</b></td><td>${STATE[e[2]] || esc(e[2])}</td>`
@@ -1437,8 +1498,8 @@ static void handleData()
              sensor.vibPeak, (unsigned long)sensor.winN, (unsigned long)sensor.dtMinUs, (unsigned long)sensor.dtMaxUs);
     j += b;
   }
-  snprintf(b, sizeof(b), "\"loopMaxMs\":%lu,\"pubDrops\":%lu,\"heap\":{\"free\":%lu,\"min\":%lu,\"maxBlock\":%lu},",
-           (unsigned long)loopMaxMs, (unsigned long)mqttPubDrops, (unsigned long)ESP.getFreeHeap(),
+  snprintf(b, sizeof(b), "\"loopMaxMs\":%lu,\"pubDrops\":%lu,\"heapWaits\":%lu,\"fsSkips\":%lu,\"heap\":{\"free\":%lu,\"min\":%lu,\"maxBlock\":%lu},",
+           (unsigned long)loopMaxMs, (unsigned long)mqttPubDrops, (unsigned long)apiHeapWaits, (unsigned long)fsSkips, (unsigned long)ESP.getFreeHeap(),
            (unsigned long)ESP.getMinFreeHeap(), (unsigned long)ESP.getMaxAllocHeap());
   j += b;
   snprintf(b, sizeof(b),
@@ -1499,6 +1560,11 @@ static void emitBucket(String &out, const Bucket &b, bool &first)
 // (sicaklik ve eksenler ortalama, toplam titresim en yuksek, alarm bitleri birlesik)
 static void handleHistory()
 {
+  HeavyLock hv(3000);
+  if (!hv.ok || ESP.getFreeHeap() < 40000) {   // bulut yuklemesi suruyor ya da bellek az
+    server.send(503, "application/json", "{\"err\":\"mesgul\"}");
+    return;
+  }
   uint32_t from = server.hasArg("from") ? strtoul(server.arg("from").c_str(), nullptr, 10) : 0;
   uint32_t to   = server.hasArg("to")   ? strtoul(server.arg("to").c_str(), nullptr, 10)   : UINT32_MAX;
 
@@ -1563,6 +1629,11 @@ static void handleHistory()
 // Tum kayitlar: noktali virgul ayracli, ondalik virgullu (Turkce Excel dogrudan acar)
 static void handleLogCsv()
 {
+  HeavyLock hv(3000);
+  if (!hv.ok || ESP.getFreeHeap() < 40000) {   // bulut yuklemesi suruyor ya da bellek az
+    server.send(503, "application/json", "{\"err\":\"mesgul\"}");
+    return;
+  }
   std::vector<LogFile> files;
   {
     FsLock lock;
@@ -1638,6 +1709,11 @@ static String jsonNum(const String &s)
 
 static void handleEvents()
 {
+  HeavyLock hv(3000);
+  if (!hv.ok || ESP.getFreeHeap() < 40000) {   // bulut yuklemesi suruyor ya da bellek az
+    server.send(503, "application/json", "{\"err\":\"mesgul\"}");
+    return;
+  }
   // Bellek: once satirlar sayilir, yalnizca son EVENTS_MAX_SHOWN satir tutulur ve
   // yanit parca parca gonderilir (tek parca ~15 KB yanit + bulut yuklemesinin TLS
   // bellegi ayni anda yetmeyip cihazi yeniden baslatiyordu, 18.11.2026)
@@ -1648,25 +1724,19 @@ static void handleEvents()
     while (rd.next(l)) if (l.length()) total++;
   }
   size_t skip = total > EVENTS_MAX_SHOWN ? total - EVENTS_MAX_SHOWN : 0;
-  std::vector<String> lines;
-  lines.reserve(total - skip);
-  {
-    EventReader rd;
-    String l;
-    size_t k = 0;
-    while (rd.next(l) && lines.size() < total - skip) {
-      if (!l.length()) continue;
-      if (k++ >= skip) lines.push_back(l);
-    }
-  }
 
+  // Satirlar bellekte biriktirilmeden, dosya sirasiyla (eskiden yeniye) akitilir
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, "application/json", "");
   String j = "[";
   bool first = true;
-  for (int i = (int)lines.size() - 1; i >= 0; i--) {
+  EventReader rd;
+  String line;
+  size_t k = 0;
+  while (rd.next(line)) {
+    if (!line.length() || k++ < skip) continue;
     String fl[6];
-    if (!splitEvent(lines[i], fl)) continue;
+    if (!splitEvent(line, fl)) continue;
     if (!first) j += ',';
     j += '[';
     j += fl[0];
@@ -1686,8 +1756,38 @@ static void handleEvents()
   server.sendContent("");
 }
 
+// Son cokmenin ozeti (flash'taki core dump): gorev adi, PC, geri izleme.
+// Adresler derleme ciktisindaki .elf ile xtensa-esp32-elf-addr2line ile cozulur.
+static void handleCoreDump()
+{
+  esp_core_dump_summary_t *s = (esp_core_dump_summary_t *)calloc(1, sizeof(esp_core_dump_summary_t));
+  if (!s) { server.send(500, "application/json", "{\"err\":\"bellek\"}"); return; }
+  String j;
+  if (esp_core_dump_image_check() == ESP_OK && esp_core_dump_get_summary(s) == ESP_OK) {
+    char b[160];
+    snprintf(b, sizeof(b), "{\"task\":\"%s\",\"pc\":\"0x%08lx\",\"cause\":%lu,\"vaddr\":\"0x%08lx\",\"elf\":\"%.16s\",\"bt\":[",
+             s->exc_task, (unsigned long)s->exc_pc, (unsigned long)s->ex_info.exc_cause,
+             (unsigned long)s->ex_info.exc_vaddr, (const char *)s->app_elf_sha256);
+    j = b;
+    for (uint32_t i = 0; i < s->exc_bt_info.depth && i < 16; i++) {
+      snprintf(b, sizeof(b), "%s\"0x%08lx\"", i ? "," : "", (unsigned long)s->exc_bt_info.bt[i]);
+      j += b;
+    }
+    j += s->exc_bt_info.corrupted ? "],\"corrupted\":true}" : "],\"corrupted\":false}";
+  } else {
+    j = "{\"task\":null}";
+  }
+  free(s);
+  server.send(200, "application/json", j);
+}
+
 static void handleEventsCsv()
 {
+  HeavyLock hv(3000);
+  if (!hv.ok || ESP.getFreeHeap() < 40000) {   // bulut yuklemesi suruyor ya da bellek az
+    server.send(503, "application/json", "{\"err\":\"mesgul\"}");
+    return;
+  }
   server.sendHeader("Content-Disposition", "attachment; filename=olaylar.csv");
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, "text/csv; charset=utf-8", "");
@@ -1987,7 +2087,16 @@ static void apiTask(void *)
 
   for (;;) {
     uint32_t wait = API_PERIOD_MS;
-    if (WiFi.status() == WL_CONNECTED && nowEpoch() && fsOk) {
+    // HTTPS (TLS ~45 KB) ancak yeterli bos bellek varken: TLS ile MQTT kuyrugu ayni anda bellegi
+    // tuketince olay kaydindaki fopen kilit olusturamayip abort ediyordu (core dump, 18.11.2026 23:20)
+    mqttMaybeReconnect();
+    bool heapOk = !mqttConnecting && ESP.getFreeHeap() >= API_MIN_FREE_HEAP && ESP.getMaxAllocHeap() >= API_MIN_BLOCK;
+    if (!heapOk) { apiHeapWaits++; wait = 1000; }
+
+    {
+    HeavyLock hv(heapOk ? 5000 : 0);   // buyuk web yanitlariyla ayni anda TLS acma
+    if (heapOk && !hv.ok) { heapOk = false; wait = 1000; }
+    if (heapOk && WiFi.status() == WL_CONNECTED && nowEpoch() && fsOk) {
       uint32_t pending;
       size_t n = collectRecords(upT, batch, API_BATCH, pending);
       apiPending = pending;
@@ -2034,6 +2143,7 @@ static void apiTask(void *)
         wait = API_RETRY_MS;
       }
     }
+    }   // HeavyLock
     // NVS'yi her kayitta degil, dakikada bir guncelle
     if (dirty && (millis() - lastSave > 60000 || wait > API_PERIOD_MS)) {
       p.putULong("upT", upT);
@@ -2041,7 +2151,11 @@ static void apiTask(void *)
       dirty = false;
       lastSave = millis();
     }
-    vTaskDelay(pdMS_TO_TICKS(wait));
+    // Beklerken MQTT baglantisini da yonet (HTTPS bu gorevde oldugu icin el sikismalari cakismaz)
+    for (uint32_t w = 0; w < wait; w += 250) {
+      mqttMaybeReconnect();
+      vTaskDelay(pdMS_TO_TICKS(250));
+    }
   }
 }
 
@@ -2107,6 +2221,7 @@ void setup()
   Serial.begin(115200);
   fsMutex = xSemaphoreCreateRecursiveMutex();
   stateMutex = xSemaphoreCreateRecursiveMutex();
+  heavyMutex = xSemaphoreCreateMutex();
   Serial2.setRxBufferSize(4096);
   Serial2.begin(STM_BAUD, SERIAL_8N1, STM_RX_PIN, STM_TX_PIN);
   Serial.println("ESP32 sensor alicisi basladi");
@@ -2150,6 +2265,7 @@ void setup()
   server.on("/storage", handleStorage);
   server.on("/log.csv", handleLogCsv);
   server.on("/events.csv", handleEventsCsv);
+  server.on("/coredump", handleCoreDump);
   server.on("/settings", HTTP_POST, handleSettings);
   server.on("/clear", HTTP_POST, handleClear);
   server.on("/anomaly/auto", HTTP_POST, handleAnomalyAuto);
