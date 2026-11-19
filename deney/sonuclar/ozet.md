@@ -1,11 +1,11 @@
 # Deney sonuçları
 
-Oluşturma: 2026-11-19 23:27:20 · Deney sayısı: 8
+Oluşturma: 2026-11-19 23:54:06 · Deney sayısı: 10
 
 | Tür | Deney | Deneme | TP | FN | FP | Precision | Recall | F1 | Gecikme ort. / medyan / en çok (s) | Yanlış alarm / saat |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | A01 Ani darbe | 6 | 53 | 50 | 3 | 0 | 100,0 % | 94,3 % | 97,1 % | 1,4 / 1,0 / 5 | 0,00 |
-| A03 Anormal sefer | 2 | 16 | 16 | 0 | 0 | 100,0 % | 100,0 % | 100,0 % | 26,0 / 34,0 / 36 | 0,00 |
+| A03 Anormal sefer | 4 | 31 | 26 | 5 | 0 | 100,0 % | 83,9 % | 91,2 % | 22,8 / 17,0 / 41 | 0,00 |
 
 **Veri düzeltmeleri ve iletim notları:**
 
@@ -14,6 +14,7 @@ Oluşturma: 2026-11-19 23:27:20 · Deney sayısı: 8
 - Oturum 5 analiz dışı bırakıldı.
 - Oturum 6 analiz dışı bırakıldı.
 - Oturum 8 analiz dışı bırakıldı.
+- Oturum 13-1 analiz dışı bırakıldı.
 - Oturum 1-2, uyaran 1: uyaransız işaret olarak analiz dışı bırakıldı.
 - Oturum 9, uyaran 9: uyaransız işaret olarak analiz dışı bırakıldı.
 - Oturum 9, uyaran 10: uyaransız işaret olarak analiz dışı bırakıldı.
@@ -31,7 +32,8 @@ Oluşturma: 2026-11-19 23:27:20 · Deney sayısı: 8
 - Oturum 11, 23:21:32: yanlış alarm sayılmadı (Dislanan uyaran 2nin (44 s sefer) sure kaynakli A03 tespiti).
 - Oturum 11, 23:25:28: yanlış alarm sayılmadı (Dislanan uyaran 9daki ani bastirmanin A01 tespiti (2,17 g; dogru tespit, yanlis alarm degil)).
 - Oturum 11, 23:25:32: yanlış alarm sayılmadı (Dislanan uyaran 9un A03 tespiti (tepe darbeden etkilendi)).
-- İletim: 66 anomali olayından 5 tanesi canlı MQTT/InfluxDB yolunda yok (diğer kaynaklardan tamamlandı): A01 2026-11-17 23:30:48, A01 2026-11-17 23:40:14, A01 2026-11-17 23:41:13, A01 2026-11-18 23:19:26, A01 2026-11-18 23:20:06
+- Oturum 13-2, 23:48:53: yanlış alarm sayılmadı (Ilk uyarandan once yapilan isaretsiz deneme seferi (kullanici dogruladi)).
+- İletim: 76 anomali olayından 5 tanesi canlı MQTT/InfluxDB yolunda yok (diğer kaynaklardan tamamlandı): A01 2026-11-17 23:30:48, A01 2026-11-17 23:40:14, A01 2026-11-17 23:41:13, A01 2026-11-18 23:19:26, A01 2026-11-18 23:20:06
 
 TP: doğru tespit · FN: kaçırılan · FP: yanlış alarm (deney süresince eşleşmeyen anomali başlangıcı).
 Precision = TP / (TP + FP) · Recall = TP / (TP + FN) · F1 = 2·P·R / (P + R).

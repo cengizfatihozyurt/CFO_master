@@ -127,7 +127,7 @@ static int wifiIdx = 0;
 #define MQTT_USER   SECRET_MQTT_USER
 #define MQTT_PASS   SECRET_MQTT_PASS
 #define MQTT_BASE   "stm32iot-fa6dbb/cihaz01"   // Node-RED akisindaki onekle ayni olmali
-#define FW_VERSION  "1.11"
+#define FW_VERSION  "1.12"
 
 #define API_URL         SECRET_API_URL
 #define API_KEY         SECRET_API_KEY
@@ -1973,6 +1973,16 @@ static void handleAnomalyAuto()
 }
 
 // POST /anomaly/manual  mu, sigma (g), ridemax (s), peak (g)
+// POST /anomaly/rides: yalnizca sefer profilini sifirla (mu/sigma korunur)
+static void handleAnomalyRides()
+{
+  StateLock st;
+  anom.resetRides();
+  saveAnomaly();
+  appendEvent("I07", "BILGI", NAN, NAN, "Sefer profili sifirlandi (sonraki 10 normal sefer ogretilir)");
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
 static void handleAnomalyManual()
 {
   StateLock st;
@@ -2282,6 +2292,7 @@ void setup()
   server.on("/anomaly/auto", HTTP_POST, handleAnomalyAuto);
   server.on("/anomaly/reset", HTTP_POST, handleAnomalyAuto);   // eski ad, mevcut sureyle ogrenir
   server.on("/anomaly/manual", HTTP_POST, handleAnomalyManual);
+  server.on("/anomaly/rides", HTTP_POST, handleAnomalyRides);
   server.begin();
   // Web sunucusu ayri gorevde: yavas ya da uykuya gecen bir tarayici (or. telefon)
   // gonderimi saniyelerce bekletebiliyor; ana dongude calistiginda STM32 satirlari

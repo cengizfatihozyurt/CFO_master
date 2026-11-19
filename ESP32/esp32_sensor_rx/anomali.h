@@ -113,6 +113,15 @@ public:
     p.learnS = (uint16_t)learnSeconds;
   }
 
+  // Yalnizca sefer profilini sifirla (normal durum mu/sigma korunur); sonraki
+  // ANOM_RIDE_LEARN normal sefer yeni profili olusturur
+  void resetRides()
+  {
+    p.nRides = 0;
+    p.durMean = p.durM2 = 0;
+    p.peakMean = p.peakM2 = 0;
+  }
+
   // Normal durum degerlerini elle gir; ogrenme yapilmaz
   void setManual(float mu, float sigma, uint32_t rideMaxS, float ridePeakG)
   {
@@ -374,8 +383,12 @@ private:
       rideFlagged = true;
     }
 
-    // Normal seferler profili gunceller (manuel modda profil sabittir)
-    if (!p.manual && dur >= ANOM_RIDE_MIN_S && !rideFlagged && !shockInRide) {
+    // Normal seferler profili olusturur; ANOM_RIDE_LEARN seferden sonra profil donar
+    // (manuel modda profil zaten sabittir). Eskiden her isaretlenmeyen sefer profile
+    // ekleniyordu: sinirin hemen altindaki anormal seferler ortalamayi ve sapmayi buyutup
+    // siniri yukseltti, tepe siniri 0,264 g'den 0,843 g'ye kaydi ve sert seferler
+    // kacirildi (deney 12, 19.11.2026). Profil resetRides() ya da yeniden ogrenme ile yenilenir.
+    if (!p.manual && p.nRides < ANOM_RIDE_LEARN && dur >= ANOM_RIDE_MIN_S && !rideFlagged && !shockInRide) {
       p.nRides++;
       float d = dur_f - p.durMean;
       p.durMean += d / p.nRides;

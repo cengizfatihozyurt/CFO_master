@@ -164,3 +164,41 @@ zaman_iso;zaman;deney_no;tur;asama;deneme;siddet;kosul
 2026-11-19T20:25:13.619Z;19.11.2026 23:25:13;11;A03;stimulus;9;uzun sert;45 saniye stabil ovalama
 2026-11-19T20:25:49.695Z;19.11.2026 23:25:49;11;A03;stimulus;10;uzun sert;45 saniye stabil ovalama
 2026-11-19T20:26:16.061Z;19.11.2026 23:26:16;11;A03;end;;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:28:26.818Z;19.11.2026 23:28:26;12;A03;start;;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:28:30.229Z;19.11.2026 23:28:30;12;A03;stimulus;1;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:29:00.104Z;19.11.2026 23:29:00;12;A03;stimulus;2;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:29:30.427Z;19.11.2026 23:29:30;12;A03;stimulus;3;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:30:04.017Z;19.11.2026 23:30:04;12;A03;stimulus;4;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:30:31.284Z;19.11.2026 23:30:31;12;A03;stimulus;5;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:31:08.125Z;19.11.2026 23:31:08;12;A03;end;;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:38:57.318Z;19.11.2026 23:38:57;13;A03;start;;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:39:04.214Z;19.11.2026 23:39:04;13;A03;end;;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:40:14.829Z;19.11.2026 23:40:14;903;A03;start;;normal;normal seefer ögretimi
+2026-11-19T20:40:18.560Z;19.11.2026 23:40:18;903;A03;stimulus;1;normal;normal seefer ögretimi
+2026-11-19T20:40:32.396Z;19.11.2026 23:40:32;903;A03;stimulus;2;normal;normal seefer ögretimi
+2026-11-19T20:40:48.596Z;19.11.2026 23:40:48;903;A03;stimulus;3;normal;normal seefer ögretimi
+2026-11-19T20:42:24.918Z;19.11.2026 23:42:24;903;A03;end;;normal;normal seefer ögretimi
+2026-11-19T20:42:28.728Z;19.11.2026 23:42:28;904;A03;start;;normal;normal seefer ögretimi
+2026-11-19T20:42:32.116Z;19.11.2026 23:42:32;904;A03;stimulus;1;normal;normal seefer ögretimi
+2026-11-19T20:42:53.683Z;19.11.2026 23:42:53;904;A03;stimulus;2;normal;normal seefer ögretimi
+2026-11-19T20:43:17.880Z;19.11.2026 23:43:17;904;A03;stimulus;3;normal;normal seefer ögretimi
+2026-11-19T20:43:55.430Z;19.11.2026 23:43:55;904;A03;stimulus;4;normal;normal seefer ögretimi
+2026-11-19T20:44:26.302Z;19.11.2026 23:44:26;904;A03;stimulus;5;normal;normal seefer ögretimi
+2026-11-19T20:44:51.564Z;19.11.2026 23:44:51;904;A03;stimulus;6;normal;normal seefer ögretimi
+2026-11-19T20:45:22.960Z;19.11.2026 23:45:22;904;A03;stimulus;7;normal;normal seefer ögretimi
+2026-11-19T20:45:51.468Z;19.11.2026 23:45:51;904;A03;stimulus;8;normal;normal seefer ögretimi
+2026-11-19T20:46:17.626Z;19.11.2026 23:46:17;904;A03;stimulus;9;normal;normal seefer ögretimi
+2026-11-19T20:46:54.193Z;19.11.2026 23:46:54;904;A03;stimulus;10;normal;normal seefer ögretimi
+2026-11-19T20:47:21.839Z;19.11.2026 23:47:21;904;A03;end;;normal;normal seefer ögretimi
+2026-11-19T20:48:32.159Z;19.11.2026 23:48:32;13;A03;start;;sert;sert sefer
+2026-11-19T20:49:02.450Z;19.11.2026 23:49:02;13;A03;stimulus;1;sert;sert sefer
+2026-11-19T20:49:28.020Z;19.11.2026 23:49:28;13;A03;stimulus;2;sert;sert sefer
+2026-11-19T20:50:13.904Z;19.11.2026 23:50:13;13;A03;stimulus;3;sert;sert sefer
+2026-11-19T20:50:34.459Z;19.11.2026 23:50:34;13;A03;stimulus;4;sert;sert sefer
+2026-11-19T20:50:52.878Z;19.11.2026 23:50:52;13;A03;stimulus;5;sert;sert sefer
+2026-11-19T20:51:14.844Z;19.11.2026 23:51:14;13;A03;stimulus;6;sert;sert sefer
+2026-11-19T20:51:39.726Z;19.11.2026 23:51:39;13;A03;stimulus;7;sert;sert sefer
+2026-11-19T20:52:01.192Z;19.11.2026 23:52:01;13;A03;stimulus;8;sert;sert sefer
+2026-11-19T20:52:19.120Z;19.11.2026 23:52:19;13;A03;stimulus;9;sert;sert sefer
+2026-11-19T20:52:37.020Z;19.11.2026 23:52:37;13;A03;stimulus;10;sert;sert sefer
+2026-11-19T20:52:56.322Z;19.11.2026 23:52:56;13;A03;end;;sert;sert sefer
