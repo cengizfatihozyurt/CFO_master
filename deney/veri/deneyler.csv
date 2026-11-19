@@ -115,3 +115,52 @@ zaman_iso;zaman;deney_no;tur;asama;deneme;siddet;kosul
 2026-11-18T20:20:10.900Z;18.11.2026 23:20:10;9;A01;stimulus;9;orta vuruş;Masaya vurarak titreşim yapma
 2026-11-18T20:20:19.018Z;18.11.2026 23:20:19;9;A01;stimulus;10;orta vuruş;Masaya vurarak titreşim yapma
 2026-11-18T20:20:25.024Z;18.11.2026 23:20:25;9;A01;end;;orta vuruş;Masaya vurarak titreşim yapma
+2026-11-19T19:56:04.985Z;19.11.2026 22:56:04;900;A03;start;;normal;stabil ovalama
+2026-11-19T19:56:16.440Z;19.11.2026 22:56:16;900;A03;stimulus;1;normal;stabil ovalama
+2026-11-19T19:56:46.287Z;19.11.2026 22:56:46;900;A03;stimulus;2;normal;stabil ovalama
+2026-11-19T19:57:10.367Z;19.11.2026 22:57:10;900;A03;stimulus;3;normal;stabil ovalama
+2026-11-19T19:57:33.941Z;19.11.2026 22:57:33;900;A03;stimulus;4;normal;stabil ovalama
+2026-11-19T19:57:53.403Z;19.11.2026 22:57:53;900;A03;stimulus;5;normal;stabil ovalama
+2026-11-19T19:58:13.814Z;19.11.2026 22:58:13;900;A03;stimulus;6;normal;stabil ovalama
+2026-11-19T19:58:33.473Z;19.11.2026 22:58:33;900;A03;stimulus;7;normal;stabil ovalama
+2026-11-19T19:58:56.262Z;19.11.2026 22:58:56;900;A03;stimulus;8;normal;stabil ovalama
+2026-11-19T19:59:16.385Z;19.11.2026 22:59:16;900;A03;stimulus;9;normal;stabil ovalama
+2026-11-19T19:59:39.231Z;19.11.2026 22:59:39;900;A03;stimulus;10;normal;stabil ovalama
+2026-11-19T20:00:02.277Z;19.11.2026 23:00:02;900;A03;end;;normal;stabil ovalama
+2026-11-19T20:01:30.112Z;19.11.2026 23:01:30;901;A03;start;;normal;stabil ovalama
+2026-11-19T20:01:34.377Z;19.11.2026 23:01:34;901;A03;stimulus;1;normal;stabil ovalama
+2026-11-19T20:01:49.688Z;19.11.2026 23:01:49;901;A03;stimulus;2;normal;stabil ovalama
+2026-11-19T20:02:09.665Z;19.11.2026 23:02:09;901;A03;stimulus;3;normal;stabil ovalama
+2026-11-19T20:02:22.001Z;19.11.2026 23:02:22;901;A03;stimulus;4;normal;stabil ovalama
+2026-11-19T20:02:37.485Z;19.11.2026 23:02:37;901;A03;stimulus;5;normal;stabil ovalama
+2026-11-19T20:02:54.197Z;19.11.2026 23:02:54;901;A03;end;;normal;stabil ovalama
+2026-11-19T20:04:16.923Z;19.11.2026 23:04:16;902;A03;start;;normal;stabil ovalama
+2026-11-19T20:04:20.839Z;19.11.2026 23:04:20;902;A03;stimulus;1;normal;stabil ovalama
+2026-11-19T20:04:45.978Z;19.11.2026 23:04:45;902;A03;stimulus;2;normal;stabil ovalama
+2026-11-19T20:05:40.705Z;19.11.2026 23:05:40;902;A03;stimulus;3;normal;stabil ovalama
+2026-11-19T20:06:09.115Z;19.11.2026 23:06:09;902;A03;end;;normal;stabil ovalama
+2026-11-19T20:08:35.734Z;19.11.2026 23:08:35;10;A03;start;;uzun;45 saniye stabil ovalama
+2026-11-19T20:08:39.037Z;19.11.2026 23:08:39;10;A03;stimulus;1;uzun;45 saniye stabil ovalama
+2026-11-19T20:09:51.141Z;19.11.2026 23:09:51;10;A03;stimulus;2;uzun;45 saniye stabil ovalama
+2026-11-19T20:10:47.228Z;19.11.2026 23:10:47;10;A03;stimulus;3;uzun;45 saniye stabil ovalama
+2026-11-19T20:11:33.591Z;19.11.2026 23:11:33;10;A03;stimulus;4;uzun;45 saniye stabil ovalama
+2026-11-19T20:12:23.543Z;19.11.2026 23:12:23;10;A03;stimulus;5;uzun;45 saniye stabil ovalama
+2026-11-19T20:13:11.573Z;19.11.2026 23:13:11;10;A03;stimulus;6;uzun;45 saniye stabil ovalama
+2026-11-19T20:13:57.426Z;19.11.2026 23:13:57;10;A03;stimulus;7;uzun;45 saniye stabil ovalama
+2026-11-19T20:14:42.509Z;19.11.2026 23:14:42;10;A03;stimulus;8;uzun;45 saniye stabil ovalama
+2026-11-19T20:15:39.595Z;19.11.2026 23:15:39;10;A03;stimulus;9;uzun;45 saniye stabil ovalama
+2026-11-19T20:16:37.203Z;19.11.2026 23:16:37;10;A03;stimulus;10;uzun;45 saniye stabil ovalama
+2026-11-19T20:17:24.398Z;19.11.2026 23:17:24;10;A03;end;;uzun;45 saniye stabil ovalama
+2026-11-19T20:19:57.688Z;19.11.2026 23:19:57;11;A03;start;;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:20:02.072Z;19.11.2026 23:20:02;11;A03;stimulus;1;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:20:57.872Z;19.11.2026 23:20:57;11;A03;stimulus;2;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:22:53.333Z;19.11.2026 23:22:53;11;A03;stimulus;3;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:23:13.122Z;19.11.2026 23:23:13;11;A03;stimulus;4;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:23:43.185Z;19.11.2026 23:23:43;11;A03;cancel;4;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:23:45.061Z;19.11.2026 23:23:45;11;A03;stimulus;5;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:24:11.406Z;19.11.2026 23:24:11;11;A03;stimulus;6;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:24:31.891Z;19.11.2026 23:24:31;11;A03;stimulus;7;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:24:52.740Z;19.11.2026 23:24:52;11;A03;stimulus;8;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:25:13.619Z;19.11.2026 23:25:13;11;A03;stimulus;9;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:25:49.695Z;19.11.2026 23:25:49;11;A03;stimulus;10;uzun sert;45 saniye stabil ovalama
+2026-11-19T20:26:16.061Z;19.11.2026 23:26:16;11;A03;end;;uzun sert;45 saniye stabil ovalama
