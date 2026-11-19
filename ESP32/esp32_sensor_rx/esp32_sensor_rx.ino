@@ -127,7 +127,7 @@ static int wifiIdx = 0;
 #define MQTT_USER   SECRET_MQTT_USER
 #define MQTT_PASS   SECRET_MQTT_PASS
 #define MQTT_BASE   "stm32iot-fa6dbb/cihaz01"   // Node-RED akisindaki onekle ayni olmali
-#define FW_VERSION  "1.10"
+#define FW_VERSION  "1.11"
 
 #define API_URL         SECRET_API_URL
 #define API_KEY         SECRET_API_KEY
@@ -288,6 +288,7 @@ static esp_mqtt_client_handle_t mqtt = nullptr;
 static volatile bool mqttConnected = false;
 static volatile bool mqttConnecting = false;   // TLS el sikismasi suruyor (HTTPS bu sirada baslamaz)
 static uint32_t mqttLastTryMs = 0;
+static volatile uint32_t mqttReconnects = 0;   // yeniden baglanma denemesi (tani, /data)
 static volatile uint32_t fsSkips = 0;          // bellek yetersizligi nedeniyle yazilamayan kayit/olay
 static volatile bool mqttAnnounce = false;   // baglaninca durum/ayar yayinla
 static QueueHandle_t mqttRxQueue = nullptr;
@@ -613,7 +614,14 @@ static void mqttMaybeReconnect()
   if (ESP.getFreeHeap() < API_MIN_FREE_HEAP) return;
   mqttLastTryMs = millis();
   mqttConnecting = true;
-  esp_mqtt_client_reconnect(mqtt);
+  mqttReconnects++;
+  // Otomatik yeniden baglanma kapaliyken istemci koptuktan sonra "yeniden baglanmayi
+  // bekliyor" durumunda kalmaz; reconnect reddedilir (FW 1.10'da MQTT 19.11.2026 boyunca
+  // kopuk kaldi). O durumda istemci durdurulup yeniden baslatilir.
+  if (esp_mqtt_client_reconnect(mqtt) != ESP_OK) {
+    esp_mqtt_client_stop(mqtt);
+    if (esp_mqtt_client_start(mqtt) != ESP_OK) mqttConnecting = false;
+  }
 }
 
 /* --------------------------- Olay kaydi ---------------------------------- */
@@ -1501,8 +1509,8 @@ static void handleData()
              sensor.vibPeak, (unsigned long)sensor.winN, (unsigned long)sensor.dtMinUs, (unsigned long)sensor.dtMaxUs);
     j += b;
   }
-  snprintf(b, sizeof(b), "\"loopMaxMs\":%lu,\"pubDrops\":%lu,\"heapWaits\":%lu,\"fsSkips\":%lu,\"heap\":{\"free\":%lu,\"min\":%lu,\"maxBlock\":%lu},",
-           (unsigned long)loopMaxMs, (unsigned long)mqttPubDrops, (unsigned long)apiHeapWaits, (unsigned long)fsSkips, (unsigned long)ESP.getFreeHeap(),
+  snprintf(b, sizeof(b), "\"loopMaxMs\":%lu,\"pubDrops\":%lu,\"heapWaits\":%lu,\"fsSkips\":%lu,\"mqtt\":%d,\"mqttReconnects\":%lu,\"heap\":{\"free\":%lu,\"min\":%lu,\"maxBlock\":%lu},",
+           (unsigned long)loopMaxMs, (unsigned long)mqttPubDrops, (unsigned long)apiHeapWaits, (unsigned long)fsSkips, (int)mqttConnected, (unsigned long)mqttReconnects, (unsigned long)ESP.getFreeHeap(),
            (unsigned long)ESP.getMinFreeHeap(), (unsigned long)ESP.getMaxAllocHeap());
   j += b;
   snprintf(b, sizeof(b),
