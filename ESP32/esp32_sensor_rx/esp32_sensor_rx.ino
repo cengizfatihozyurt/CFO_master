@@ -75,6 +75,7 @@
 #include <vector>
 #include <algorithm>
 #include "esp_core_dump.h"
+#include "esp_task_wdt.h"
 
 // Bilinen Wi-Fi aglari: baglanti yoksa sirayla denenir (ev agi, telefon hotspotu ...)
 struct WifiNet { const char *ssid, *pass; };
@@ -127,7 +128,7 @@ static int wifiIdx = 0;
 #define MQTT_USER   SECRET_MQTT_USER
 #define MQTT_PASS   SECRET_MQTT_PASS
 #define MQTT_BASE   "stm32iot-fa6dbb/cihaz01"   // Node-RED akisindaki onekle ayni olmali
-#define FW_VERSION  "1.12"
+#define FW_VERSION  "1.13"
 
 #define API_URL         SECRET_API_URL
 #define API_KEY         SECRET_API_KEY
@@ -405,13 +406,23 @@ struct PubMsg { char *topic; char *payload; int8_t qos; bool retain; };
 static QueueHandle_t mqttPubQueue = nullptr;
 static volatile uint32_t mqttPubDrops = 0;
 static volatile uint32_t apiHeapWaits = 0;   // bellek yetersiz diye ertelenen bulut yuklemesi
+// Takilma tanisi: her gorev o an hangi adimda oldugunu RTC bellegine yazar (yeniden
+// baslamada silinmez). Bir sonraki acilista I06 olayina eklenir (20.11.2026 gece
+// cihaz 33 saat takili kaldi, nerede oldugu bilinemedi).
+RTC_NOINIT_ATTR static uint32_t rtcMagic;
+RTC_NOINIT_ATTR static volatile uint8_t rtcLoopStage, rtcApiStage, rtcPubStage;
+#define RTC_MAGIC 0x5354414Bu
+#define STAGE(var, n) do { var = (n); } while (0)
+static volatile bool testHang = false;   // POST /test/hang: bekci testi icin donguyu kilitler
 static uint32_t loopMaxMs = 0;   // en uzun ana dongu suresi (tani, /data)
 
 static void mqttPubTask(void *)
 {
   PubMsg m;
   for (;;) {
+    STAGE(rtcPubStage, 1);   // kuyruk bekleniyor
     if (xQueueReceive(mqttPubQueue, &m, portMAX_DELAY) != pdTRUE) continue;
+    STAGE(rtcPubStage, 2);   // esp-mqtt yayin
     if (m.qos > 0) {
       esp_mqtt_client_enqueue(mqtt, m.topic, m.payload, 0, m.qos, m.retain, true);
     } else if (mqttConnected) {
@@ -2119,10 +2130,12 @@ static void apiTask(void *)
     if (heapOk && !hv.ok) { heapOk = false; wait = 1000; }
     if (heapOk && WiFi.status() == WL_CONNECTED && nowEpoch() && fsOk) {
       uint32_t pending;
+      STAGE(rtcApiStage, 1);   // kayit okuma
       size_t n = collectRecords(upT, batch, API_BATCH, pending);
       apiPending = pending;
       bool ok = true;
       if (n) {
+        STAGE(rtcApiStage, 2);   // olcum HTTPS
         int st = apiPost("/api/v1/telemetry", telemetryJson(batch, n));
         apiLastStatus = st;
         if (st >= 200 && st < 300) {
@@ -2142,7 +2155,9 @@ static void apiTask(void *)
       if (ok) {
         String ej;
         uint32_t lastT = 0;
+        STAGE(rtcApiStage, 3);   // olay okuma
         if (collectEventsJson(upE, ej, lastT)) {
+          STAGE(rtcApiStage, 4);   // olay HTTPS
           int st = apiPost("/api/v1/events", ej);
           apiLastStatus = st;
           if ((st >= 200 && st < 300) || st == 400 || st == 413) {
@@ -2173,6 +2188,7 @@ static void apiTask(void *)
       lastSave = millis();
     }
     // Beklerken MQTT baglantisini da yonet (HTTPS bu gorevde oldugu icin el sikismalari cakismaz)
+    STAGE(rtcApiStage, 9);   // bekleme / MQTT yeniden baglanma
     for (uint32_t w = 0; w < wait; w += 250) {
       mqttMaybeReconnect();
       vTaskDelay(pdMS_TO_TICKS(250));
@@ -2273,8 +2289,16 @@ void setup()
   }
   {
     esp_reset_reason_t rr = esp_reset_reason();
-    char desc[64];
-    snprintf(desc, sizeof(desc), "Cihaz yeniden başladı: %s", resetReasonName(rr));
+    char desc[120];
+    // Onceki calismanin son adimlari (guc kesilmesinde RTC bellegi silinir, sihirli sayi tutmaz)
+    if (rtcMagic == RTC_MAGIC && rr != ESP_RST_POWERON && rr != ESP_RST_BROWNOUT) {
+      snprintf(desc, sizeof(desc), "Cihaz yeniden başladı: %s (son adim: dongu %u / api %u / mqtt %u)",
+               resetReasonName(rr), rtcLoopStage, rtcApiStage, rtcPubStage);
+    } else {
+      snprintf(desc, sizeof(desc), "Cihaz yeniden başladı: %s", resetReasonName(rr));
+    }
+    rtcMagic = RTC_MAGIC;
+    rtcLoopStage = rtcApiStage = rtcPubStage = 0;
     Serial.printf("Yeniden baslama nedeni: %d (%s)\n", (int)rr, resetReasonName(rr));
     if (fsOk) appendEvent("I06", "BILGI", (float)rr, NAN, desc);
   }
@@ -2293,6 +2317,7 @@ void setup()
   server.on("/anomaly/reset", HTTP_POST, handleAnomalyAuto);   // eski ad, mevcut sureyle ogrenir
   server.on("/anomaly/manual", HTTP_POST, handleAnomalyManual);
   server.on("/anomaly/rides", HTTP_POST, handleAnomalyRides);
+  server.on("/test/hang", HTTP_POST, []() { testHang = true; server.send(200, "application/json", "{\"ok\":true}"); });
   server.begin();
   // Web sunucusu ayri gorevde: yavas ya da uykuya gecen bir tarayici (or. telefon)
   // gonderimi saniyelerce bekletebiliyor; ana dongude calistiginda STM32 satirlari
@@ -2303,6 +2328,15 @@ void setup()
   mqttStart();
   apiStart();
   lastLogMs = millis();
+
+  // Ana dongu bekcisi: dongu 30 s'den uzun takilirsa cihaz yeniden baslar (core dump +
+  // I06 olayinda son adimlar). Arduino her loop() sonunda bekciyi besler.
+  esp_task_wdt_config_t wdt = {};
+  wdt.timeout_ms = 30000;
+  wdt.idle_core_mask = 1;          // cekirdek 0'in bos gorevi de izlenir (varsayilan)
+  wdt.trigger_panic = true;
+  esp_task_wdt_reconfigure(&wdt);
+  enableLoopWDT();
 }
 
 // Dongu suresi tanisi: bir bolum LOOP_SLOW_MS'den uzun surerse seri porta yazilir,
@@ -2338,6 +2372,7 @@ void loop()
     if (total > loopMaxMs) loopMaxMs = total;
   }
   loopStart = t0;
+  STAGE(rtcLoopStage, 1);     // Wi-Fi kontrolu
 
 
   // Wi-Fi koparsa ayni aga yeniden baglanmayi dene; WIFI_SWITCH_MS boyunca olmazsa
@@ -2373,11 +2408,14 @@ void loop()
   }
 #endif
   loopSection("wifi", t0);
+  STAGE(rtcLoopStage, 2);     // StateLock + pumpSerial
+  while (testHang) delay(100);   // bekci testi: dongu burada takilir, 30 s sonra yeniden baslar
 
   {
     StateLock st;
     pumpSerial();
     loopSection("seri+anomali", t0);
+    STAGE(rtcLoopStage, 3);   // alarm + flushLog
 
     if (sensor.packetCount > 0 && millis() - sensor.lastUpdateMs > TIMEOUT_MS) {
       setAlarm(AL_LINK, true, NAN, NAN);
@@ -2385,8 +2423,10 @@ void loop()
 
     flushLog();
     loopSection("kayit", t0);
+    STAGE(rtcLoopStage, 4);   // mqttProcess
     mqttProcess();
     loopSection("mqtt", t0);
+    STAGE(rtcLoopStage, 5);
   }
 
   static uint32_t lastDiag = 0;
@@ -2395,5 +2435,6 @@ void loop()
     Serial.printf("Tani: Serial2 alinan bayt=%lu, bozuk satir=%lu\n",
                   (unsigned long)sensor.rxBytes, (unsigned long)sensor.badLines);
   }
+  STAGE(rtcLoopStage, 9);
   vTaskDelay(1);   // ayni cekirdekteki web gorevine zaman birak
 }
