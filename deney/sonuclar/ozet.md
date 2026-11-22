@@ -1,13 +1,14 @@
 # Deney sonuçları
 
-Oluşturma: 2026-11-22 11:45:22 · Deney sayısı: 12
+Oluşturma: 2026-11-22 11:59:29 · Deney sayısı: 13
 
 | Tür | Deney | Deneme | TP | FN | FP | Precision | Recall | F1 | Gecikme ort. / medyan / en çok (s) | Yanlış alarm / saat |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| A01 Ani darbe | 6 | 53 | 50 | 3 | 0 | 100,0 % | 94,3 % | 97,1 % | 1,4 / 1,0 / 5 | 0,00 |
+| A01 Ani darbe | 6 | 53 | 45 | 8 | 0 | 100,0 % | 84,9 % | 91,8 % | 1,3 / 1,0 / 5 | 0,00 |
 | A02 Duruşta anormal titreşim | 1 | 10 | 10 | 0 | 0 | 100,0 % | 100,0 % | 100,0 % | 7,7 / 8,0 / 11 | 0,00 |
 | A03 Anormal sefer | 4 | 31 | 26 | 5 | 0 | 100,0 % | 83,9 % | 91,2 % | 22,8 / 17,0 / 41 | 0,00 |
 | A04 Hızlı ısınma | 1 | 9 | 9 | 0 | 1 | 90,0 % | 100,0 % | 94,7 % | 113,4 / 84,0 / 311 | 0,34 |
+| KESINTI İnternet kesintisi | 1 | 5 | 0 | 5 | 0 | - | 0,0 % | - | - / - / - | 0,00 |
 
 **Veri düzeltmeleri ve iletim notları:**
 
@@ -31,7 +32,7 @@ Oluşturma: 2026-11-22 11:45:22 · Deney sayısı: 12
 - Oturum 1-3, 23:29:31: yanlış alarm sayılmadı (Ilk isaretten once yapilan deneme vurusu (kullanici dogruladi, tepe 12,2 g)).
 - Oturum 3, 23:40:59: yanlış alarm sayılmadı (Deneme 5-6 vuruslarinin gec islenmesi: ESP32 dongusu 23:40:35-23:41:00 arasi takildi, biriken satirlar topluca islendi (yerel kayitta 39 s bosluk); denemeler kacirma sayildi).
 - Oturum 3, 23:41:00: yanlış alarm sayılmadı (Deneme 5-6 vuruslarinin gec islenmesi (ayni takilma)).
-- Oturum 3, 23:41:01: yanlış alarm sayılmadı (Deneme 5-6 vuruslarinin gec islenmesi (ayni takilma)).
+- Uyarı: yanlis_alarm_haric 3@2026-11-17 23:41:01 eşleşmedi.
 - Oturum 11, 23:20:36: yanlış alarm sayılmadı (Dislanan uyaran 1in (46 s sefer) sure kaynakli A03 tespiti).
 - Oturum 11, 23:21:27: yanlış alarm sayılmadı (Dislanan uyaran 2deki ani bastirmanin A01 tespiti (0,695 g)).
 - Oturum 11, 23:21:32: yanlış alarm sayılmadı (Dislanan uyaran 2nin (44 s sefer) sure kaynakli A03 tespiti).
@@ -40,7 +41,8 @@ Oluşturma: 2026-11-22 11:45:22 · Deney sayısı: 12
 - Oturum 13-2, 23:48:53: yanlış alarm sayılmadı (Ilk uyarandan once yapilan isaretsiz deneme seferi (kullanici dogruladi)).
 - Oturum 15, 10:05:36: yanlış alarm sayılmadı (Dislanan uyaran 5in (onceki A04 surerken verilen) isitmasinin tespiti).
 - Oturum 15, 10:26:30: yanlış alarm sayılmadı (Isaretsiz deneme: uyaran isareti kaydedilmeden yapilan isitmanin tespiti (paneldeki son isaret 7; 8. deneme 11:53te yeniden yapildi)).
-- İletim: 96 anomali olayından 5 tanesi canlı MQTT/InfluxDB yolunda yok (diğer kaynaklardan tamamlandı): A01 2026-11-17 23:30:48, A01 2026-11-17 23:40:14, A01 2026-11-17 23:41:13, A01 2026-11-18 23:19:26, A01 2026-11-18 23:20:06
+- Not: bulut API kaynağına ulaşılamadı; olaylar diğer kaynaklardan alındı.
+- Not: ESP32 yerel kaydı kaynağına ulaşılamadı; olaylar diğer kaynaklardan alındı.
 
 TP: doğru tespit · FN: kaçırılan · FP: yanlış alarm (deney süresince eşleşmeyen anomali başlangıcı).
 Precision = TP / (TP + FP) · Recall = TP / (TP + FN) · F1 = 2·P·R / (P + R).

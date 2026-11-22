@@ -228,3 +228,10 @@ zaman_iso;zaman;deney_no;tur;asama;deneme;siddet;kosul
 2026-11-21T09:25:48.963Z;21.11.2026 12:25:48;15;A04;stimulus;11;orta;Prob parmakla ısıtma, 3 dk
 2026-11-21T09:34:08.948Z;21.11.2026 12:34:08;15;A04;stimulus;12;orta;Prob parmakla ısıtma, 3 dk
 2026-11-21T09:39:51.802Z;21.11.2026 12:39:51;15;A04;end;;orta;Prob parmakla ısıtma, 3 dk
+2026-11-22T08:48:49.067Z;22.11.2026 11:48:49;16;KESINTI;start;;10 dakika ;Modemi kapattım 
+2026-11-22T08:52:32.720Z;22.11.2026 11:52:32;16;KESINTI;stimulus;1;10 dakika ;Modemi kapattım 
+2026-11-22T08:53:52.546Z;22.11.2026 11:53:52;16;KESINTI;stimulus;2;10 dakika ;Modemi kapattım 
+2026-11-22T08:55:33.334Z;22.11.2026 11:55:33;16;KESINTI;stimulus;3;10 dakika ;Modemi kapattım 
+2026-11-22T08:57:23.478Z;22.11.2026 11:57:23;16;KESINTI;stimulus;4;10 dakika ;Modemi kapattım 
+2026-11-22T08:59:09.182Z;22.11.2026 11:59:09;16;KESINTI;stimulus;5;10 dakika ;Modemi kapattım 
+2026-11-22T08:59:21.428Z;22.11.2026 11:59:21;16;KESINTI;end;;10 dakika ;Modemi kapattım 

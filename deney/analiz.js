@@ -217,7 +217,7 @@ async function loadEvents(cfg, from, to) {
   } catch (e) { reached.bulut = false; }
 
   try {
-    const r = await fetch(`http://${await esp32Host()}/events`, {signal: AbortSignal.timeout(10000)});
+    const r = await espFetch(`http://${await esp32Host()}/events`, 10000);
     for (const e of await r.json()) if (e[0] >= from && e[0] <= to) add('yerel', e[0], e[1], e[2], e[3]);
     reached.yerel = true;
   } catch (e) { reached.yerel = false; }
@@ -335,6 +335,18 @@ function writeOutputs(results, notes = []) {
 
 /* ------------------------------------------------------------------ kesinti raporu */
 
+
+// ESP32 buyuk istekleri (log.csv, events) bulut yuklemesi surerken 503 "mesgul" doner (FW 1.10+):
+// birkac kez yeniden dene
+async function espFetch(url, ms = 30000) {
+  for (let i = 0; i < 8; i++) {
+    const r = await fetch(url, {signal: AbortSignal.timeout(ms)});
+    if (r.status !== 503) return r;
+    await new Promise((res) => setTimeout(res, 3000));
+  }
+  throw new Error('ESP32 mesgul: ' + url);
+}
+
 async function outageReport(cfg, exp) {
   const host = await esp32Host();
   const api = process.env.API_URL || 'https://stm32iot-api-fh72.onrender.com';
@@ -342,7 +354,7 @@ async function outageReport(cfg, exp) {
   const from = Math.floor(exp.start), to = Math.ceil(exp.end || Date.now() / 1000);
 
   // 1) ESP32 yerel kaydi (log.csv: "YYYY-MM-DD HH:MM:SS" yerel saat, Turkiye UTC+3)
-  const csv = await (await fetch(`http://${host}/log.csv`)).text();
+  const csv = await (await espFetch(`http://${host}/log.csv`, 120000)).text();
   const local = csv.split(/\r?\n/).slice(1).map((l) => l.split(';')[0]).filter(Boolean)
     .map((z) => Date.parse(z.replace(' ', 'T') + '+03:00') / 1000).filter((t) => t >= from && t <= to);
 
@@ -356,7 +368,7 @@ async function outageReport(cfg, exp) {
   const lastArrival = cloud.length ? Math.max(...cloud.map((r) => r.received_at)) : null;
 
   // 3) Olaylar: ESP32 yerel olay kaydi ve buluttaki olaylar
-  const localEv = (await (await fetch(`http://${host}/events`)).json())
+  const localEv = (await (await espFetch(`http://${host}/events`)).json())
     .filter((e) => e[0] >= from && e[0] <= to + 600 && ANOMALY.includes(e[1]) && e[2] === 'BASLADI');
   const cloudEv = (await (await fetch(`${api}/api/v1/events?device=${device}&from=${from}&to=${to + 600}&limit=10000`, {headers})).json())
     .filter((e) => ANOMALY.includes(e.code) && e.state === 'BASLADI');
