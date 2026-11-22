@@ -34,7 +34,8 @@
     "15@2026-11-21 10:26:30"
   ],
   "bitis": {
-    "3": "2026-11-17 23:41:30"
+    "3": "2026-11-17 23:41:30",
+    "17": "2026-11-22 12:35:00"
   },
   "gerekceler": {
     "3": "Bitir'e basilmadi; 10. denemeden sonraki tespitler masanin oynamasindan (kullanici dogruladi)",
@@ -42,6 +43,7 @@
     "5": "Eski USB kablosu arizali: ilk sert vurusta ESP32 yeniden basladi (yerel kayitta 22:18:55-22:20:29 arasi 94 s bosluk, USB seri cipi de koptu). Kablo degistirildi; ayni kosuldaki deney 7: 10/10. Sistem arizasi, yontem olcumu degil.",
     "6": "Ayni arizali USB kablosu: ilk vurustan sonra ESP32 yeniden basladi (22:20:39-22:21:47 arasi 68 s bosluk).",
     "8": "Yarim kalan oturum: kullanici deney sirasinda ESP32 kablosunu cikardi (kullanici dogruladi; yerel kayitta 22:36:04-22:42:34 bosluk). Uyaran 4 panelden iptal edildi, 5-6 cihaz kapaliyken verildi.",
+    "17": "Bitir isareti kaydedilmedi; kesinti sonu kullanicinin modemi yeniden taktigi zaman (yaklasik 12:35) alindi.",
     "1-1": "Deneme amacli calisma (30.10.2026): isaretsiz vuruslar ve sallama",
     "1-2:1": "Isaret cevresinde titresim kaydi yok (uyaransiz isaret)",
     "1-3@2026-11-17 23:29:31": "Ilk isaretten once yapilan deneme vurusu (kullanici dogruladi, tepe 12,2 g)",
