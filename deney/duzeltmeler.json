@@ -14,7 +14,10 @@
     "9:10",
     "11:1",
     "11:2",
-    "11:9"
+    "11:9",
+    "15:2",
+    "15:3",
+    "15:5"
   ],
   "yanlis_alarm_haric": [
     "1-3@2026-11-17 23:29:31",
@@ -26,7 +29,9 @@
     "11@2026-11-19 23:21:32",
     "11@2026-11-19 23:25:28",
     "11@2026-11-19 23:25:32",
-    "13-2@2026-11-19 23:48:53"
+    "13-2@2026-11-19 23:48:53",
+    "15@2026-11-21 10:05:36",
+    "15@2026-11-21 10:26:30"
   ],
   "bitis": {
     "3": "2026-11-17 23:41:30"
@@ -54,6 +59,11 @@
     "11@2026-11-19 23:25:28": "Dislanan uyaran 9daki ani bastirmanin A01 tespiti (2,17 g; dogru tespit, yanlis alarm degil)",
     "11@2026-11-19 23:25:32": "Dislanan uyaran 9un A03 tespiti (tepe darbeden etkilendi)",
     "13-1": "Bos oturum: 23:38:57de baslatilip 7 s sonra uyaransiz bitirildi (yanlislikla).",
-    "13-2@2026-11-19 23:48:53": "Ilk uyarandan once yapilan isaretsiz deneme seferi (kullanici dogruladi)"
+    "13-2@2026-11-19 23:48:53": "Ilk uyarandan once yapilan isaretsiz deneme seferi (kullanici dogruladi)",
+    "15:2": "Kosul saglanmadi: onceki isitmanin A04u surerken (09:42:42-09:51:40) verildi; prob sogumadan isitmaya devam edildi (43 C).",
+    "15:3": "Ayni gerekce: A04 hala aktifken verildi.",
+    "15:5": "Kosul saglanmadi: deneme 4un A04u surerken (09:59:38-10:04:36) verildi.",
+    "15@2026-11-21 10:05:36": "Dislanan uyaran 5in (onceki A04 surerken verilen) isitmasinin tespiti",
+    "15@2026-11-21 10:26:30": "Isaretsiz deneme: uyaran isareti kaydedilmeden yapilan isitmanin tespiti (paneldeki son isaret 7; 8. deneme 11:53te yeniden yapildi)"
   }
 }
