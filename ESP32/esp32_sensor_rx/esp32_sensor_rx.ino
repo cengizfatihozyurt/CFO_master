@@ -128,7 +128,7 @@ static int wifiIdx = 0;
 #define MQTT_USER   SECRET_MQTT_USER
 #define MQTT_PASS   SECRET_MQTT_PASS
 #define MQTT_BASE   "stm32iot-fa6dbb/cihaz01"   // Node-RED akisindaki onekle ayni olmali
-#define FW_VERSION  "1.13"
+#define FW_VERSION  "1.14"
 
 #define API_URL         SECRET_API_URL
 #define API_KEY         SECRET_API_KEY
@@ -406,6 +406,7 @@ struct PubMsg { char *topic; char *payload; int8_t qos; bool retain; };
 static QueueHandle_t mqttPubQueue = nullptr;
 static volatile uint32_t mqttPubDrops = 0;
 static volatile uint32_t apiHeapWaits = 0;   // bellek yetersiz diye ertelenen bulut yuklemesi
+static volatile uint32_t wifiDrops = 0;      // Wi-Fi kopma sayisi (tani, /data)
 // Takilma tanisi: her gorev o an hangi adimda oldugunu RTC bellegine yazar (yeniden
 // baslamada silinmez). Bir sonraki acilista I06 olayina eklenir (20.11.2026 gece
 // cihaz 33 saat takili kaldi, nerede oldugu bilinemedi).
@@ -1520,8 +1521,8 @@ static void handleData()
              sensor.vibPeak, (unsigned long)sensor.winN, (unsigned long)sensor.dtMinUs, (unsigned long)sensor.dtMaxUs);
     j += b;
   }
-  snprintf(b, sizeof(b), "\"loopMaxMs\":%lu,\"pubDrops\":%lu,\"heapWaits\":%lu,\"fsSkips\":%lu,\"mqtt\":%d,\"mqttReconnects\":%lu,\"heap\":{\"free\":%lu,\"min\":%lu,\"maxBlock\":%lu},",
-           (unsigned long)loopMaxMs, (unsigned long)mqttPubDrops, (unsigned long)apiHeapWaits, (unsigned long)fsSkips, (int)mqttConnected, (unsigned long)mqttReconnects, (unsigned long)ESP.getFreeHeap(),
+  snprintf(b, sizeof(b), "\"loopMaxMs\":%lu,\"pubDrops\":%lu,\"heapWaits\":%lu,\"fsSkips\":%lu,\"mqtt\":%d,\"mqttReconnects\":%lu,\"wifiDrops\":%lu,\"heap\":{\"free\":%lu,\"min\":%lu,\"maxBlock\":%lu},",
+           (unsigned long)loopMaxMs, (unsigned long)mqttPubDrops, (unsigned long)apiHeapWaits, (unsigned long)fsSkips, (int)mqttConnected, (unsigned long)mqttReconnects, (unsigned long)wifiDrops, (unsigned long)ESP.getFreeHeap(),
            (unsigned long)ESP.getMinFreeHeap(), (unsigned long)ESP.getMaxAllocHeap());
   j += b;
   snprintf(b, sizeof(b),
@@ -2231,6 +2232,98 @@ static void beginWiFi(int idx)
   Serial.printf("Wi-Fi'ye baglaniliyor: %s\n", WIFI_NETS[idx].ssid);
 }
 
+// Wi-Fi yonetimi (her dongude cagrilir, beklemez). Eskiden baglanti kopunca bilinen aglar
+// 20'ser s sirayla deneniyordu: ev agi dakikada bir kez deneniyor, modem acildiktan sonra
+// baglanma 2-9 dk surebiliyordu (kesinti deneyleri 17-18, 22.11.2026). Simdi:
+//  1) kopunca ayni aga hemen bir kez yeniden baglanilir (kisa kesintiler icin),
+//  2) olmazsa ortam taranir (asenkron) ve gorunen bilinen aglardan listede ilk olana baglanilir,
+//  3) gorunen yoksa WIFI_SCAN_MS sonra yeniden taranir.
+// Baglaninca kesinti suresi I08 olayi olarak kaydedilir.
+#define WIFI_SCAN_MS     5000    // gorunen bilinen ag yoksa yeniden tarama araligi
+#define WIFI_CONNECT_MS  12000   // bir aga baglanma denemesi icin sure
+enum WifiState : uint8_t { WS_UP, WS_RETRY, WS_SCAN, WS_CONNECT, WS_IDLE };
+static WifiState wifiState = WS_UP;
+static uint32_t wifiDownMs = 0, wifiStateMs = 0;
+
+static void wifiManage()
+{
+  uint32_t now = millis();
+  bool up = WiFi.status() == WL_CONNECTED;
+
+  if (up) {
+    if (wifiState != WS_UP) {
+      uint32_t downS = wifiDownMs ? (now - wifiDownMs) / 1000 : 0;
+      Serial.printf("Wi-Fi baglandi (%s), kesinti %lu s\n", WIFI_NETS[wifiIdx].ssid, (unsigned long)downS);
+      if (wifiDownMs) {
+        char desc[80];
+        snprintf(desc, sizeof(desc), "Wi-Fi yeniden baglandi (%s) kesinti %lu s", WIFI_NETS[wifiIdx].ssid,
+                 (unsigned long)downS);
+        appendEvent("I08", "BILGI", (float)downS, NAN, desc);
+      }
+      wifiState = WS_UP;
+      wifiDownMs = 0;
+    }
+    static IPAddress lastIp;
+    if (WiFi.localIP() != lastIp) {
+      lastIp = WiFi.localIP();
+      Serial.print("IP adresi: http://");
+      Serial.println(lastIp);
+    }
+    return;
+  }
+
+  switch (wifiState) {
+    case WS_UP:   // yeni koptu: ayni aga bir kez hizli deneme
+      wifiDrops++;
+      wifiDownMs = now;
+      Serial.println("Wi-Fi koptu, yeniden baglaniliyor...");
+      WiFi.reconnect();
+      wifiState = WS_RETRY;
+      wifiStateMs = now;
+      break;
+    case WS_RETRY:
+    case WS_CONNECT:
+      if (now - wifiStateMs > WIFI_CONNECT_MS) {
+        wifiState = WS_IDLE;
+        wifiStateMs = 0;   // hemen tara
+      }
+      break;
+    case WS_IDLE:
+      if (!wifiStateMs || now - wifiStateMs > WIFI_SCAN_MS) {
+        WiFi.disconnect();
+        if (WiFi.scanNetworks(true, false) == WIFI_SCAN_FAILED) {
+          wifiStateMs = now;   // tarama baslamadi: biraz sonra yine dene
+        } else {
+          wifiState = WS_SCAN;
+          wifiStateMs = now;
+        }
+      }
+      break;
+    case WS_SCAN: {
+      int16_t n = WiFi.scanComplete();
+      if (n == WIFI_SCAN_RUNNING) {
+        if (now - wifiStateMs > 15000) { WiFi.scanDelete(); wifiState = WS_IDLE; wifiStateMs = now; }
+        break;
+      }
+      int best = -1;
+      for (int k = 0; n > 0 && k < WIFI_NET_COUNT && best < 0; k++) {
+        for (int i = 0; i < n; i++) {
+          if (WiFi.SSID(i) == WIFI_NETS[k].ssid) { best = k; break; }
+        }
+      }
+      WiFi.scanDelete();
+      if (best >= 0) {
+        beginWiFi(best);
+        wifiState = WS_CONNECT;
+      } else {
+        wifiState = WS_IDLE;   // gorunen bilinen ag yok
+      }
+      wifiStateMs = now;
+      break;
+    }
+  }
+}
+
 // Acilista bilinen aglari sirayla dener (her biri en fazla 15 s)
 static void connectWiFi()
 {
@@ -2278,6 +2371,7 @@ void setup()
   }
 
   connectWiFi();
+  WiFi.setAutoReconnect(false);   // yeniden baglanmayi wifiManage() yonetir (tarama ile)
   configTzTime(TZ_INFO, NTP_SERVER1, NTP_SERVER2);
   struct tm tmv;
   if (getLocalTime(&tmv, 10000)) {
@@ -2375,30 +2469,7 @@ void loop()
   STAGE(rtcLoopStage, 1);     // Wi-Fi kontrolu
 
 
-  // Wi-Fi koparsa ayni aga yeniden baglanmayi dene; WIFI_SWITCH_MS boyunca olmazsa
-  // siradaki bilinen aga gec. IP degisirse yaz.
-  static uint32_t lastWifiCheck = 0, wifiDownSince = 0;
-  if (millis() - lastWifiCheck > 5000) {
-    lastWifiCheck = millis();
-    if (WiFi.status() != WL_CONNECTED) {
-      if (!wifiDownSince) {
-        wifiDownSince = millis();
-        Serial.println("Wi-Fi koptu, yeniden baglaniliyor...");
-        WiFi.reconnect();
-      } else if (millis() - wifiDownSince > WIFI_SWITCH_MS) {
-        wifiDownSince = millis();
-        beginWiFi((wifiIdx + 1) % WIFI_NET_COUNT);
-      }
-    } else {
-      wifiDownSince = 0;
-      static IPAddress lastIp;
-      if (WiFi.localIP() != lastIp) {
-        lastIp = WiFi.localIP();
-        Serial.print("IP adresi: http://");
-        Serial.println(lastIp);
-      }
-    }
-  }
+  wifiManage();
 
 #if LOOPBACK_TEST
   static uint32_t lastFake = 0;
